@@ -28,7 +28,7 @@ TIMEZONE = ZoneInfo("Asia/Almaty")
 
 def get_connection():
     if not DATABASE_URL:
-        raise ValueError("В файле .env не найден DATABASE_URL")
+        raise ValueError("Не найден BOT_TOKEN в переменных окружения")
     return psycopg.connect(DATABASE_URL)
 
 
