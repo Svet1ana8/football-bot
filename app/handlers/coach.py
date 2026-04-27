@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -24,10 +24,10 @@ from app.services.trainings import (
     send_payment_reminder_by_month_text,
     start_training_reminder,
 )
-from datetime import date
 from app.repositories.payments import (
     get_subscriptions_ending_soon,
     get_unpaid_subscriptions,
+    get_unpaid_subscriptions_with_users,
 )
 
 
@@ -476,9 +476,36 @@ async def open_mark_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await deny_access(update)
         return
 
-    await update.message.reply_text(
-        "Здесь позже появится выбор игрока для отметки оплаты."
-    )
+    today = date.today()
+    subscriptions = get_unpaid_subscriptions_with_users(today)
+
+    if not subscriptions:
+        await update.message.reply_text("Нет игроков для отметки оплаты.")
+        return
+
+    for user_id, username, first_name, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule in subscriptions:
+        name = first_name or str(user_id)
+        if username:
+            name += f" (@{username})"
+
+        end_date_text = subscription_end_date.strftime('%d.%m.%Y') if subscription_end_date else "Не указана"
+        last_payment_text = last_payment_date.strftime('%d.%m.%Y') if last_payment_date else "Не указана"
+
+        text = (
+            f"{name}\n"
+            f"ID: {user_id}\n"
+            f"День оплаты: {payment_day}\n"
+            f"Абонемент до: {end_date_text}\n"
+            f"Последняя оплата: {last_payment_text}\n"
+            f"Особый график: {'Да' if has_custom_schedule else 'Нет'}"
+        )
+
+        keyboard = [[
+            InlineKeyboardButton("✅ Подтвердить оплату", callback_data=f"confirm_payment_{user_id}")
+        ]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(text, reply_markup=reply_markup)
 
 
 async def back_to_coach_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):

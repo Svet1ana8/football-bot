@@ -1,6 +1,9 @@
+from datetime import date, timedelta
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from app.repositories.payments import confirm_payment
 from app.repositories.users import add_or_update_user, delete_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
@@ -156,4 +159,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         else:
             await query.edit_message_text("Игрок уже удалён или не найден.")
+
+        return
+
+    if data.startswith("confirm_payment_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        target_user_id = int(data.split("_")[2])
+
+        today = date.today()
+        new_end_date = today + timedelta(days=30)
+
+        confirm_payment(
+            user_id=target_user_id,
+            today=today,
+            new_end_date=new_end_date
+        )
+
+        await query.edit_message_text(
+            f"✅ Оплата игрока {target_user_id} подтверждена.\n"
+            f"Абонемент продлён до {new_end_date.strftime('%d.%m.%Y')}."
+        )
         return
