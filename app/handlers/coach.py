@@ -24,6 +24,8 @@ from app.services.trainings import (
     send_payment_reminder_by_month_text,
     start_training_reminder,
 )
+from datetime import date
+from app.repositories.payments import get_subscriptions_ending_soon
 
 
 async def coach(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -372,6 +374,43 @@ async def open_payments_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    today = date.today()
+    subscriptions = get_subscriptions_ending_soon(today, days=5)
+
+    if not subscriptions:
+        await update.message.reply_text("Нет игроков, у которых скоро заканчивается абонемент.")
+        return
+
+    players_map = {
+        user_id: (username, first_name)
+        for user_id, username, first_name in get_users_by_status("approved")
+    }
+
+    text = "У кого скоро заканчивается абонемент:\n\n"
+
+    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule in subscriptions:
+        username, first_name = players_map.get(user_id, (None, None))
+
+        name = first_name or str(user_id)
+        if username:
+            name += f" (@{username})"
+
+        days_left = (subscription_end_date - today).days
+
+        text += (
+            f"{name}\n"
+            f"ID: {user_id}\n"
+            f"Абонемент до: {subscription_end_date.strftime('%d.%m.%Y')}\n"
+            f"Осталось дней: {days_left}\n"
+            f"День оплаты: {payment_day}\n"
+            f"Особый график: {'Да' if has_custom_schedule else 'Нет'}\n\n"
+        )
+
+    await update.message.reply_text(text)
     if not is_coach(update.effective_user.id):
         await deny_access(update)
         return
