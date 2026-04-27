@@ -16,6 +16,7 @@ from app.handlers.coach import (
     show_ending_soon,
     show_unpaid_players,
     open_mark_payment,
+    show_all_subscriptions,
     back_to_coach_menu,
 )
 
@@ -143,4 +144,11 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await deny_access(update)
             return
         await back_to_coach_menu(update, context)
+        return
+
+    if text == "Все абонементы":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await show_all_subscriptions(update, context)
         return

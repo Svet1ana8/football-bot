@@ -23,6 +23,7 @@ def get_payments_menu():
         ["У кого скоро заканчивается"],
         ["Кто не оплатил"],
         ["Отметить оплату"],
+        ["Все абонементы"],
         ["Назад"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
