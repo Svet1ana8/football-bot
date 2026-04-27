@@ -126,7 +126,8 @@ def confirm_payment(user_id: int, today: date, new_end_date: date):
                 UPDATE player_subscriptions
                 SET is_paid_current_period = TRUE,
                     last_payment_date = %s,
-                    subscription_end_date = %s
+                    subscription_end_date = %s,
+                    payment_claimed = FALSE
                 WHERE user_id = %s
             """, (today, new_end_date, user_id))
         conn.commit()
@@ -178,3 +179,23 @@ def get_subscriptions_ending_soon_with_users(today: date, days: int = 5):
                 ORDER BY ps.subscription_end_date
             """, (today, end_limit))
             return cur.fetchall()
+
+def mark_payment_claimed(user_id: int, claimed: bool = True):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE player_subscriptions
+                SET payment_claimed = %s
+                WHERE user_id = %s
+            """, (claimed, user_id))
+        conn.commit()
+
+def reject_claimed_payment(user_id: int):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE player_subscriptions
+                SET payment_claimed = FALSE
+                WHERE user_id = %s
+            """, (user_id,))
+        conn.commit()

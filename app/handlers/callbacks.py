@@ -1,9 +1,14 @@
 from datetime import date, timedelta
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from app.repositories.payments import confirm_payment
+from app.config import COACH_IDS
+from app.repositories.payments import (
+    confirm_payment,
+    mark_payment_claimed,
+    reject_claimed_payment,
+)
 from app.repositories.users import add_or_update_user, delete_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
@@ -71,6 +76,43 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=query.from_user.id,
             text="❌ Ответ сохранён: ты не придёшь на тренировку."
+        )
+        return
+
+    if data == "payment_claimed":
+        mark_payment_claimed(query.from_user.id, True)
+
+        await query.answer("Твоя отметка об оплате отправлена тренеру.")
+        await query.edit_message_reply_markup(reply_markup=None)
+
+        player_name = query.from_user.first_name or str(query.from_user.id)
+        if query.from_user.username:
+            player_name += f" (@{query.from_user.username})"
+
+        text = (
+            f"Игрок {player_name} сообщил, что оплатил.\n"
+            f"ID: {query.from_user.id}"
+        )
+
+        keyboard = [[
+            InlineKeyboardButton("✅ Подтвердить оплату", callback_data=f"confirm_payment_{query.from_user.id}"),
+            InlineKeyboardButton("❌ Не подтверждать", callback_data=f"reject_payment_{query.from_user.id}")
+        ]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        for coach_id in COACH_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=int(coach_id),
+                    text=text,
+                    reply_markup=reply_markup
+                )
+            except Exception:
+                pass
+
+        await context.bot.send_message(
+            chat_id=query.from_user.id,
+            text="Тренеру отправлено уведомление о том, что ты оплатил."
         )
         return
 
@@ -182,4 +224,40 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ Оплата игрока {target_user_id} подтверждена.\n"
             f"Абонемент продлён до {new_end_date.strftime('%d.%m.%Y')}."
         )
+
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text=(
+                    f"✅ Тренер подтвердил оплату.\n"
+                    f"Твой абонемент продлён до {new_end_date.strftime('%d.%m.%Y')}."
+                )
+            )
+        except Exception:
+            pass
+
+        return
+
+    if data.startswith("reject_payment_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        target_user_id = int(data.split("_")[2])
+
+        reject_claimed_payment(target_user_id)
+
+        await query.edit_message_text(
+            f"❌ Оплата игрока {target_user_id} не подтверждена.\n"
+            f"Напоминания об оплате продолжатся."
+        )
+
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text="Тренер пока не подтвердил оплату. Если ты уже оплатил, подожди немного и попробуй позже."
+            )
+        except Exception:
+            pass
+
         return

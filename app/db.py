@@ -56,4 +56,21 @@ def init_db():
                 )
             """)
 
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS player_subscriptions (
+                    user_id BIGINT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+                    payment_day INTEGER NOT NULL DEFAULT 24,
+                    subscription_end_date DATE,
+                    last_payment_date DATE,
+                    is_paid_current_period BOOLEAN NOT NULL DEFAULT FALSE,
+                    has_custom_schedule BOOLEAN NOT NULL DEFAULT FALSE,
+                    payment_claimed BOOLEAN NOT NULL DEFAULT FALSE
+                )
+            """)
+
+            cur.execute("""
+                ALTER TABLE player_subscriptions
+                ADD COLUMN IF NOT EXISTS payment_claimed BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+
         conn.commit()
