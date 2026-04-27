@@ -12,7 +12,6 @@ from app.repositories.schedules import (
 )
 from app.repositories.users import (
     add_or_update_user,
-    delete_user,
     get_user_by_id,
     get_users_by_status,
 )
@@ -20,8 +19,9 @@ from app.services.access import is_broadcast_recipient, is_coach
 from app.services.schedules import scheduled_send_job
 from app.services.trainings import (
     build_training_responses_text,
+    schedule_training_repeat_job,
     send_payment_reminder_by_month_text,
-    send_training_reminder_text,
+    start_training_reminder,
 )
 
 
@@ -210,7 +210,7 @@ async def schedule_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not full_text:
         await update.message.reply_text(
             "Используй команду так:\n"
-            "/schedule 2026-04-30 18:00 Текст сообщения"
+            "/schedule 30.04.2026 21:00 Текст сообщения"
         )
         return
 
@@ -220,7 +220,7 @@ async def schedule_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Неверный формат.\n"
             "Пример:\n"
-            "/schedule 2026-04-30 18:00 Напоминаю об оплате тренировок"
+            "/schedule 30.04.2026 21:00 Напоминаю об оплате тренировок"
         )
         return
 
@@ -230,12 +230,12 @@ async def schedule_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         send_at = datetime.strptime(
-            f"{date_part} {time_part}", "%Y-%m-%d %H:%M"
+            f"{date_part} {time_part}", "%d.%m.%Y %H:%M"
         ).replace(tzinfo=TIMEZONE)
     except ValueError:
         await update.message.reply_text(
             "Неверный формат даты или времени.\n"
-            "Используй так: YYYY-MM-DD HH:MM"
+            "Используй так: ДД.ММ.ГГГГ ЧЧ:ММ"
         )
         return
 
@@ -336,17 +336,19 @@ async def send_training_reminder(update: Update, context: ContextTypes.DEFAULT_T
         await deny_access(update)
         return
 
-    approved_users = get_users_by_status("approved")
-    if not approved_users:
-        await update.message.reply_text("Нет одобренных игроков для рассылки.")
+    result = await start_training_reminder(context)
+
+    if result is None:
+        await update.message.reply_text("Напоминание уже запущено.")
         return
 
-    success_count, fail_count = await send_training_reminder_text(context)
+    schedule_training_repeat_job(context.application)
 
     await update.message.reply_text(
         f"Напоминание о тренировке отправлено.\n"
-        f"Успешно: {success_count}\n"
-        f"Ошибок: {fail_count}"
+        f"Успешно: {result['success_count']}\n"
+        f"Ошибок: {result['fail_count']}\n"
+        f"Повторы будут отправляться каждые 2 часа до {result['stop_at'].strftime('%H:%M')}."
     )
 
 

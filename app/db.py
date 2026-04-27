@@ -31,11 +31,29 @@ def init_db():
             """)
 
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS training_responses (
-                    user_id BIGINT PRIMARY KEY,
-                    username TEXT,
-                    first_name TEXT,
-                    response TEXT
+                CREATE TABLE IF NOT EXISTS trainings (
+                    id SERIAL PRIMARY KEY,
+                    message_text TEXT NOT NULL,
+                    start_time TIMESTAMPTZ NOT NULL,
+                    last_reminder_time TIMESTAMPTZ,
+                    stop_at TIMESTAMPTZ NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE
                 )
             """)
+
+            cur.execute("""
+                DROP TABLE IF EXISTS training_responses
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS training_responses (
+                    training_id INTEGER NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
+                    user_id BIGINT NOT NULL,
+                    username TEXT,
+                    first_name TEXT,
+                    response TEXT NOT NULL,
+                    PRIMARY KEY (training_id, user_id)
+                )
+            """)
+
         conn.commit()

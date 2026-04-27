@@ -16,7 +16,7 @@ from app.utils.dates import get_month_name_prepositional
 async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE):
     approved_users = get_users_by_status("approved")
     month_name = get_month_name_prepositional(datetime.now(TIMEZONE))
-    message_text = f"Напоминаю об оплате за тренировку в {month_name}."
+    message_text = f"Добрый вечер, у вас настало время оплатить за тренировки в {month_name}. Прошу сделать это."
 
     success_count = 0
     fail_count = 0

@@ -22,6 +22,7 @@ from app.handlers.coach import (
 from app.handlers.common import my_id, start
 from app.handlers.player import menu_handler
 from app.services.schedules import restore_jobs
+from app.services.trainings import schedule_training_repeat_job
 
 
 def main():
@@ -46,6 +47,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_handler))
 
     restore_jobs(app)
+    schedule_training_repeat_job(app)
 
     print("Бот запущен...")
     app.run_polling()

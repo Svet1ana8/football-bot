@@ -1,10 +1,10 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app.repositories.trainings import save_training_response
 from app.repositories.users import add_or_update_user, delete_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
+from app.services.trainings import save_player_training_response
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -33,13 +33,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await notify_coaches_about_request(context, user.id)
         return
 
-    if data == "training_yes":
-        save_training_response(
+    if data.startswith("training_yes_"):
+        training_id = int(data.split("_")[2])
+
+        save_player_training_response(
+            training_id=training_id,
             user_id=query.from_user.id,
             username=query.from_user.username,
             first_name=query.from_user.first_name,
             response="yes"
         )
+
         await query.answer("Ответ сохранён")
         await query.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_message(
@@ -48,13 +52,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if data == "training_no":
-        save_training_response(
+    if data.startswith("training_no_"):
+        training_id = int(data.split("_")[2])
+
+        save_player_training_response(
+            training_id=training_id,
             user_id=query.from_user.id,
             username=query.from_user.username,
             first_name=query.from_user.first_name,
             response="no"
         )
+
         await query.answer("Ответ сохранён")
         await query.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_message(
