@@ -41,7 +41,10 @@ def get_today_stop_at() -> datetime:
 async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE):
     approved_users = get_users_by_status("approved")
     month_name = get_month_name_prepositional(datetime.now(TIMEZONE))
-    message_text = f"Напоминаю об оплате за тренировку в {month_name}."
+    message_text = (
+        f"Добрый вечер, у вас настало время оплатить за тренировки в {month_name}. "
+        f"Прошу сделать это."
+    )
 
     success_count = 0
     fail_count = 0
@@ -210,7 +213,7 @@ def schedule_training_repeat_job(application):
 
     application.job_queue.run_repeating(
         repeat_training_reminder_job,
-        interval=timedelta(hours=2),
-        first=timedelta(hours=2),
+        interval=timedelta(hours=1),
+        first=timedelta(hours=1),
         name="training_repeat_job",
     )
