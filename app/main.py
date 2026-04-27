@@ -23,6 +23,8 @@ from app.handlers.common import my_id, start
 from app.handlers.player import menu_handler
 from app.services.schedules import restore_jobs
 from app.services.trainings import schedule_training_repeat_job
+from app.services.payments import schedule_daily_payment_jobs
+from app.handlers.coach import test_subscription_reminders
 
 
 def main():
@@ -45,9 +47,11 @@ def main():
     app.add_handler(CommandHandler("delete_schedule", delete_schedule))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_handler))
+    app.add_handler(CommandHandler("test_sub_reminders", test_subscription_reminders))
 
     restore_jobs(app)
     schedule_training_repeat_job(app)
+    schedule_daily_payment_jobs(app)
 
     print("Бот запущен...")
     app.run_polling()

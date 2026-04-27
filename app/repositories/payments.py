@@ -153,3 +153,28 @@ def get_unpaid_subscriptions_with_users(today: date):
                 ORDER BY ps.payment_day, ps.user_id
             """, (today.day,))
             return cur.fetchall()
+
+def get_subscriptions_ending_soon_with_users(today: date, days: int = 5):
+    end_limit = today + timedelta(days=days)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    ps.user_id,
+                    u.username,
+                    u.first_name,
+                    ps.payment_day,
+                    ps.subscription_end_date,
+                    ps.last_payment_date,
+                    ps.is_paid_current_period,
+                    ps.has_custom_schedule
+                FROM player_subscriptions ps
+                JOIN users u ON u.user_id = ps.user_id
+                WHERE ps.subscription_end_date IS NOT NULL
+                  AND ps.subscription_end_date >= %s
+                  AND ps.subscription_end_date <= %s
+                  AND u.status = 'approved'
+                ORDER BY ps.subscription_end_date
+            """, (today, end_limit))
+            return cur.fetchall()

@@ -30,6 +30,14 @@ from app.repositories.payments import (
     get_unpaid_subscriptions,
     get_unpaid_subscriptions_with_users,
 )
+from app.services.payments import send_subscription_ending_reminders
+async def test_subscription_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    await send_subscription_ending_reminders(context)
+    await update.message.reply_text("Тестовое напоминание о скором окончании абонемента отправлено.")
 
 
 async def coach(update: Update, context: ContextTypes.DEFAULT_TYPE):
