@@ -25,7 +25,10 @@ from app.services.trainings import (
     start_training_reminder,
 )
 from datetime import date
-from app.repositories.payments import get_subscriptions_ending_soon
+from app.repositories.payments import (
+    get_subscriptions_ending_soon,
+    get_unpaid_subscriptions,
+)
 
 
 async def coach(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -421,6 +424,44 @@ async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_unpaid_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    today = date.today()
+    subscriptions = get_unpaid_subscriptions(today)
+
+    if not subscriptions:
+        await update.message.reply_text("Нет игроков, которые не оплатили.")
+        return
+
+    players_map = {
+        user_id: (username, first_name)
+        for user_id, username, first_name in get_users_by_status("approved")
+    }
+
+    text = "Кто не оплатил:\n\n"
+
+    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule in subscriptions:
+        username, first_name = players_map.get(user_id, (None, None))
+
+        name = first_name or str(user_id)
+        if username:
+            name += f" (@{username})"
+
+        end_date_text = subscription_end_date.strftime('%d.%m.%Y') if subscription_end_date else "Не указана"
+        last_payment_text = last_payment_date.strftime('%d.%m.%Y') if last_payment_date else "Не указана"
+
+        text += (
+            f"{name}\n"
+            f"ID: {user_id}\n"
+            f"День оплаты: {payment_day}\n"
+            f"Абонемент до: {end_date_text}\n"
+            f"Последняя оплата: {last_payment_text}\n"
+            f"Особый график: {'Да' if has_custom_schedule else 'Нет'}\n\n"
+        )
+
+    await update.message.reply_text(text)
     if not is_coach(update.effective_user.id):
         await deny_access(update)
         return
