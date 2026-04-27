@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes
 
 from app.config import TIMEZONE
 from app.handlers.common import deny_access
+from app.keyboards import get_payments_menu, get_coach_menu
 from app.repositories.schedules import (
     create_scheduled_message,
     delete_scheduled_message,
@@ -358,3 +359,54 @@ async def show_training_responses(update: Update, context: ContextTypes.DEFAULT_
         return
 
     await update.message.reply_text(build_training_responses_text())
+
+async def open_payments_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    await update.message.reply_text(
+        "Раздел оплат. Выбери действие:",
+        reply_markup=get_payments_menu()
+    )
+
+
+async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    await update.message.reply_text(
+        "Здесь позже появится список игроков, у кого скоро заканчивается абонемент."
+    )
+
+
+async def show_unpaid_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    await update.message.reply_text(
+        "Здесь позже появится список игроков, которые ещё не оплатили."
+    )
+
+
+async def open_mark_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    await update.message.reply_text(
+        "Здесь позже появится выбор игрока для отметки оплаты."
+    )
+
+
+async def back_to_coach_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    await update.message.reply_text(
+        "Возвращаю в главное меню тренера.",
+        reply_markup=get_coach_menu()
+    )

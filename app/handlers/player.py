@@ -12,6 +12,11 @@ from app.handlers.coach import (
     send_payment_reminder_by_month,
     send_training_reminder,
     show_training_responses,
+    open_payments_menu,
+    show_ending_soon,
+    show_unpaid_players,
+    open_mark_payment,
+    back_to_coach_menu,
 )
 
 
@@ -98,9 +103,44 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_training_reminder(update, context)
         return
 
-    if text == "Ответы на тренировку":
+    if text == "Ответы на голосование":
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
         await show_training_responses(update, context)
+        return
+
+    if text == "Оплаты":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await open_payments_menu(update, context)
+        return
+
+    if text == "У кого скоро заканчивается":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await show_ending_soon(update, context)
+        return
+
+    if text == "Кто не оплатил":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await show_unpaid_players(update, context)
+        return
+
+    if text == "Отметить оплату":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await open_mark_payment(update, context)
+        return
+
+    if text == "Назад":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await back_to_coach_menu(update, context)
         return
