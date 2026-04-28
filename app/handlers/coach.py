@@ -335,13 +335,16 @@ async def send_payment_reminder_by_month(update: Update, context: ContextTypes.D
         await deny_access(update)
         return
 
-    success_count, fail_count = await send_manual_payment_reminders(context)
+    try:
+        success_count, fail_count = await send_manual_payment_reminders(context)
 
-    await update.message.reply_text(
-        f"Рассылка отправлена.\n"
-        f"Успешно: {success_count}\n"
-        f"Ошибок: {fail_count}"
-    )
+        await update.message.reply_text(
+            f"Рассылка отправлена.\n"
+            f"Успешно: {success_count}\n"
+            f"Ошибок: {fail_count}"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"Ошибка при рассылке оплаты: {e}")
 
 
 async def send_training_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
