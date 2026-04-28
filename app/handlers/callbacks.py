@@ -6,6 +6,7 @@ from telegram.ext import ContextTypes
 from app.config import COACH_IDS
 from app.repositories.payments import (
     confirm_payment,
+    create_subscription_for_user,
     mark_payment_claimed,
     reject_claimed_payment,
 )
@@ -134,6 +135,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             first_name=existing_user[2],
             status="approved"
         )
+        create_subscription_for_user(target_user_id)
 
         await query.edit_message_text(f"✅ Пользователь {target_user_id} одобрен.")
 
