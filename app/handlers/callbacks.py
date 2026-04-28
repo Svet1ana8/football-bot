@@ -151,39 +151,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    if data.startswith("reject_"):
-        if not is_coach(query.from_user.id):
-            await query.edit_message_text("У тебя нет доступа к этому действию.")
-            return
-
-        target_user_id = int(data.split("_")[1])
-        existing_user = get_user_by_id(target_user_id)
-
-        if not existing_user:
-            await query.edit_message_text("Такой заявки уже нет.")
-            return
-
-        add_or_update_user(
-            user_id=existing_user[0],
-            username=existing_user[1],
-            first_name=existing_user[2],
-            status="rejected"
-        )
-
-        await query.edit_message_text(f"❌ Пользователь {target_user_id} отклонён.")
-
-        try:
-            await context.bot.send_message(
-                chat_id=target_user_id,
-                text="Твоя заявка была отклонена тренером."
-            )
-        except Exception:
-            await context.bot.send_message(
-                chat_id=query.from_user.id,
-                text=f"Пользователь {target_user_id} отклонён, но сообщение ему отправить не удалось."
-            )
-        return
-
     if data.startswith("delete_player_"):
         if not is_coach(query.from_user.id):
             await query.edit_message_text("У тебя нет доступа к этому действию.")
@@ -267,4 +234,37 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=f"Не удалось отправить сообщение игроку: {e}"
             )
 
+        return
+
+    if data.startswith("reject_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        target_user_id = int(data.split("_")[1])
+        existing_user = get_user_by_id(target_user_id)
+
+        if not existing_user:
+            await query.edit_message_text("Такой заявки уже нет.")
+            return
+
+        add_or_update_user(
+            user_id=existing_user[0],
+            username=existing_user[1],
+            first_name=existing_user[2],
+            status="rejected"
+        )
+
+        await query.edit_message_text(f"❌ Пользователь {target_user_id} отклонён.")
+
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text="Твоя заявка была отклонена тренером."
+            )
+        except Exception:
+            await context.bot.send_message(
+                chat_id=query.from_user.id,
+                text=f"Пользователь {target_user_id} отклонён, но сообщение ему отправить не удалось."
+            )
         return
