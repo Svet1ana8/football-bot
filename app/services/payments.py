@@ -106,6 +106,36 @@ async def send_unpaid_reminders(context: ContextTypes.DEFAULT_TYPE):
     print(f"Отправлено напоминаний об оплате: {sent_count}")
 
 
+async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
+    today = datetime.now(TIMEZONE).date()
+    subscriptions = get_unpaid_subscriptions_with_users(today)
+
+    if not subscriptions:
+        return 0, 0
+
+    success_count = 0
+    fail_count = 0
+    message_text = build_payment_reminder_message()
+    reply_markup = get_payment_keyboard()
+
+    for user_id, username, first_name, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed in subscriptions:
+        if not is_broadcast_recipient(user_id):
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=message_text,
+                reply_markup=reply_markup
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить ручное напоминание об оплате игроку {user_id}: {e}")
+            fail_count += 1
+
+    return success_count, fail_count
+
+
 def schedule_daily_payment_jobs(application):
     existing_ending_jobs = application.job_queue.get_jobs_by_name("subscription_ending_reminders")
     if not existing_ending_jobs:
