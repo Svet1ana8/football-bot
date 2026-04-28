@@ -249,6 +249,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         reject_claimed_payment(target_user_id)
 
+        await query.answer("Отклонение получено")
+
         await query.edit_message_text(
             f"❌ Оплата игрока {target_user_id} не подтверждена.\n"
             f"Напоминания об оплате продолжатся."
@@ -259,7 +261,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=target_user_id,
                 text="Тренер пока не подтвердил оплату. Если ты уже оплатил, подожди немного и попробуй позже."
             )
-        except Exception:
-            pass
+        except Exception as e:
+            await context.bot.send_message(
+                chat_id=query.from_user.id,
+                text=f"Не удалось отправить сообщение игроку: {e}"
+            )
 
         return
