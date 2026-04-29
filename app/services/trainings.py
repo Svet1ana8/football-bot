@@ -213,7 +213,7 @@ def schedule_training_repeat_job(application):
 
     application.job_queue.run_repeating(
         repeat_training_reminder_job,
-        interval=timedelta(hours=1),
-        first=timedelta(hours=1),
+        interval=timedelta(minutes=10),
+        first=timedelta(minutes=10),
         name="training_repeat_job",
     )
