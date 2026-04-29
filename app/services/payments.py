@@ -147,8 +147,9 @@ def schedule_daily_payment_jobs(application):
 
     existing_unpaid_jobs = application.job_queue.get_jobs_by_name("unpaid_payment_reminders")
     if not existing_unpaid_jobs:
-        application.job_queue.run_daily(
+        application.job_queue.run_repeating(
             send_unpaid_reminders,
-            time=datetime.strptime("18:00", "%H:%M").time(),
+            interval=600,  # 600 секунд = 10 минут
+            first=10,  # первый запуск через 10 секунд после старта бота
             name="unpaid_payment_reminders",
         )
