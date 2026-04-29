@@ -221,6 +221,9 @@ def schedule_training_repeat_job(application):
 from datetime import datetime
 
 
+from app.config import TIMEZONE
+
+
 def build_training_status_text(application) -> str:
     active_training = get_active_training()
 
@@ -248,12 +251,20 @@ def build_training_status_text(application) -> str:
     if jobs:
         job = jobs[0]
         if job.next_t:
-            next_run = job.next_t
-            next_run_text = next_run.strftime("%d.%m.%Y %H:%M:%S")
+            next_run = job.next_t.astimezone(TIMEZONE)
+            next_run_text = next_run.strftime("%d.%m.%Y %H:%M")
 
-    start_time_text = start_time.strftime("%d.%m.%Y %H:%M") if start_time else "не указано"
-    last_reminder_text = last_reminder_time.strftime("%d.%m.%Y %H:%M") if last_reminder_time else "не указано"
-    stop_at_text = stop_at.strftime("%d.%m.%Y %H:%M") if stop_at else "не указано"
+    start_time_text = "не указано"
+    if start_time:
+        start_time_text = start_time.astimezone(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+
+    last_reminder_text = "не указано"
+    if last_reminder_time:
+        last_reminder_text = last_reminder_time.astimezone(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+
+    stop_at_text = "не указано"
+    if stop_at:
+        stop_at_text = stop_at.astimezone(TIMEZONE).strftime("%d.%m.%Y %H:%M")
 
     return (
         "📣 Статус напоминания о тренировке\n\n"
