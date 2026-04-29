@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import datetime, date, time
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -363,6 +363,15 @@ async def send_training_reminder(update: Update, context: ContextTypes.DEFAULT_T
         await deny_access(update)
         return
 
+    now_local = datetime.now(TIMEZONE)
+
+    if now_local.time() >= time(19, 0):
+        await update.message.reply_text(
+            "После 19:00 напоминание о тренировке запускать нельзя. "
+            "Если нужно, запусти его заранее до начала тренировки."
+        )
+        return
+
     result = await start_training_reminder(context)
 
     if result is None:
@@ -375,7 +384,7 @@ async def send_training_reminder(update: Update, context: ContextTypes.DEFAULT_T
         f"Напоминание о тренировке отправлено.\n"
         f"Успешно: {result['success_count']}\n"
         f"Ошибок: {result['fail_count']}\n"
-        f"Повторы будут отправляться каждые 2 часа до {result['stop_at'].strftime('%H:%M')}."
+        f"Повторы будут отправляться каждый 1 час до {result['stop_at'].strftime('%H:%M')}."
     )
 
 
