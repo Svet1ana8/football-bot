@@ -60,15 +60,12 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     end_date_text = subscription_end_date.strftime("%d.%m.%Y") if subscription_end_date else "Не указана"
     last_payment_text = last_payment_date.strftime("%d.%m.%Y") if last_payment_date else "Не указана"
     paid_text = "Да" if is_paid_current_period else "Нет"
-    custom_text = "Да" if has_custom_schedule else "Нет"
     claimed_text = "Да" if payment_claimed else "Нет"
 
     text += (
         f"Абонемент до: {end_date_text}\n"
-        f"День оплаты: {payment_day}\n"
-        f"Последняя оплата: {last_payment_text}\n"
-        f"Оплачено в текущем периоде: {paid_text}\n"
-        f"Особый график: {custom_text}\n"
+        f"Дата оплаты: {last_payment_text}\n"
+        f"Последняя оплата подтверждена: {paid_text}\n"
         f"Отметка 'Оплатил': {claimed_text}"
     )
 
