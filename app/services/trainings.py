@@ -224,13 +224,22 @@ from datetime import datetime
 from app.config import TIMEZONE
 
 
+from datetime import datetime, timedelta
+
+from app.config import TIMEZONE
+from app.repositories.trainings import get_active_training, get_training_responses
+from app.repositories.users import get_users_by_status
+from app.services.access import is_broadcast_recipient
+
+
 def build_training_status_text(application) -> str:
     active_training = get_active_training()
 
     if not active_training:
         return (
             "📣 Статус напоминания о тренировке\n\n"
-            "Статус: не запущено"
+            "Статус: не запущено\n"
+            "Следующий повтор: недоступен"
         )
 
     training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
@@ -245,30 +254,36 @@ def build_training_status_text(application) -> str:
     answered_count = len(responses)
     not_answered_count = max(total_players - answered_count, 0)
 
-    jobs = application.job_queue.get_jobs_by_name("training_repeat_job")
+    now_local = datetime.now(TIMEZONE)
 
-    next_run_text = "не найден"
-    if jobs:
-        job = jobs[0]
-        if job.next_t:
-            next_run = job.next_t.astimezone(TIMEZONE)
+    start_time_local = start_time.astimezone(TIMEZONE) if start_time else None
+    last_reminder_local = last_reminder_time.astimezone(TIMEZONE) if last_reminder_time else None
+    stop_at_local = stop_at.astimezone(TIMEZONE) if stop_at else None
+
+    start_time_text = start_time_local.strftime("%d.%m.%Y %H:%M") if start_time_local else "не указано"
+    last_reminder_text = last_reminder_local.strftime("%d.%m.%Y %H:%M") if last_reminder_local else "не указано"
+    stop_at_text = stop_at_local.strftime("%d.%m.%Y %H:%M") if stop_at_local else "не указано"
+
+    status_text = "активно"
+    next_run_text = "недоступен"
+
+    is_finished_by_time = stop_at_local and now_local >= stop_at_local
+    is_finished_by_answers = not_answered_count == 0
+
+    if is_finished_by_time or is_finished_by_answers or not is_active:
+        status_text = "завершено"
+    else:
+        next_run = last_reminder_local + timedelta(hours=1) if last_reminder_local else None
+
+        if next_run and stop_at_local and next_run <= stop_at_local:
             next_run_text = next_run.strftime("%d.%m.%Y %H:%M")
-
-    start_time_text = "не указано"
-    if start_time:
-        start_time_text = start_time.astimezone(TIMEZONE).strftime("%d.%m.%Y %H:%M")
-
-    last_reminder_text = "не указано"
-    if last_reminder_time:
-        last_reminder_text = last_reminder_time.astimezone(TIMEZONE).strftime("%d.%m.%Y %H:%M")
-
-    stop_at_text = "не указано"
-    if stop_at:
-        stop_at_text = stop_at.astimezone(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+        else:
+            status_text = "завершено"
+            next_run_text = "недоступен"
 
     return (
         "📣 Статус напоминания о тренировке\n\n"
-        f"Статус: {'активно' if is_active else 'остановлено'}\n"
+        f"Статус: {status_text}\n"
         f"Начато: {start_time_text}\n"
         f"Последнее напоминание: {last_reminder_text}\n"
         f"Остановится в: {stop_at_text}\n"
