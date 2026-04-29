@@ -15,6 +15,7 @@ from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
 from app.services.trainings import save_player_training_response
 from app.keyboards import get_approved_player_menu
+from app.keyboards import get_player_menu
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -166,7 +167,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(
                     chat_id=target_user_id,
-                    text="Ты был удалён из списка игроков. Если нужно, можешь снова подать заявку."
+                    text="Ты был удалён из списка игроков. Если нужно, можешь снова подать заявку.",
+                    reply_markup=get_player_menu()
                 )
             except Exception:
                 pass
