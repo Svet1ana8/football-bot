@@ -226,7 +226,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text="Тренер пока не подтвердил оплату. Если ты уже оплатил, подожди немного и попробуй позже."
+                text="Тренер пока не подтвердил оплату. Напоминания продолжатся."
             )
         except Exception as e:
             await context.bot.send_message(
