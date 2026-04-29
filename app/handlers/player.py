@@ -27,35 +27,50 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing_user = get_user_by_id(user.id)
 
     if not existing_user:
-        await update.message.reply_text("Ты ещё не отправлял заявку тренеру.")
+        await update.message.reply_text(
+            "📭 Заявка ещё не отправлена.\n\n"
+            "Нажми кнопку «Подать заявку», чтобы тренер увидел тебя."
+        )
         return
 
     status = existing_user[3]
 
     if status == "pending":
-        text = "Твоя заявка сейчас на рассмотрении у тренера."
-        await update.message.reply_text(text)
+        await update.message.reply_text(
+            "⏳ Статус заявки: на рассмотрении\n\n"
+            "Тренер ещё не принял решение."
+        )
         return
 
     if status == "rejected":
-        text = "Твоя заявка была отклонена. Ты можешь подать её снова."
-        await update.message.reply_text(text)
+        await update.message.reply_text(
+            "❌ Статус заявки: отклонена\n\n"
+            "Ты можешь подать заявку повторно."
+        )
         return
 
     if status != "approved":
-        await update.message.reply_text(f"Текущий статус: {status}")
+        await update.message.reply_text(f"ℹ️ Текущий статус: {status}")
         return
 
     subscription = get_subscription_by_user_id(user.id)
 
-    text = "Твой статус: одобрен ✅\n\n"
+    text = "✅ Твой статус: одобрен\n\n"
 
     if not subscription:
-        text += "Данные абонемента пока не заполнены."
+        text += "💳 Данные абонемента пока не заполнены."
         await update.message.reply_text(text)
         return
 
-    user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed = subscription
+    (
+        user_id,
+        payment_day,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        has_custom_schedule,
+        payment_claimed,
+    ) = subscription
 
     end_date_text = subscription_end_date.strftime("%d.%m.%Y") if subscription_end_date else "Не указана"
     last_payment_text = last_payment_date.strftime("%d.%m.%Y") if last_payment_date else "Не указана"
@@ -63,10 +78,10 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     claimed_text = "Да" if payment_claimed else "Нет"
 
     text += (
-        f"Абонемент до: {end_date_text}\n"
-        f"Дата оплаты: {last_payment_text}\n"
-        f"Последняя оплата подтверждена: {paid_text}\n"
-        f"Отметка 'Оплатил': {claimed_text}"
+        f"💳 Абонемент до: {end_date_text}\n"
+        f"📅 Дата оплаты: {last_payment_text}\n"
+        f"✅ Оплата подтверждена: {paid_text}\n"
+        f"💸 Кнопка «Оплатил»: {claimed_text}"
     )
 
     await update.message.reply_text(text)

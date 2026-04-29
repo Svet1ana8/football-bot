@@ -170,11 +170,14 @@ async def approved(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     for user_id, username, first_name in approved_users:
-        text = f"ID: {user_id}"
-        if first_name:
-            text += f" | Имя: {first_name}"
-        if username:
-            text += f" | username: @{username}"
+        name_text = first_name or "Без имени"
+        username_text = f"@{username}" if username else "не указан"
+
+        text = (
+            f"👤 Игрок: {name_text}\n"
+            f"🆔 ID: {user_id}\n"
+            f"🔗 Username: {username_text}"
+        )
 
         keyboard = [[
             InlineKeyboardButton("🗑 Удалить игрока", callback_data=f"delete_player_{user_id}")
@@ -418,12 +421,12 @@ async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         days_left = (subscription_end_date - today).days
 
         text += (
-            f"{name}\n"
-            f"ID: {user_id}\n"
-            f"Абонемент до: {subscription_end_date.strftime('%d.%m.%Y')}\n"
-            f"Осталось дней: {days_left}\n"
-            f"День оплаты: {payment_day}\n"
-            f"Особый график: {'Да' if has_custom_schedule else 'Нет'}\n\n"
+            f"⏰ Скоро срок оплаты\n"
+            f"👤 Игрок: {name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"💳 Абонемент до: {subscription_end_date.strftime('%d.%m.%Y')}\n"
+            f"📅 Осталось дней: {days_left}\n"
+            f"📌 Последняя оплата: {last_payment_date.strftime('%d.%m.%Y') if last_payment_date else 'Не указана'}\n\n"
         )
 
     await update.message.reply_text(text)
@@ -459,12 +462,13 @@ async def show_unpaid_players(update: Update, context: ContextTypes.DEFAULT_TYPE
         last_payment_text = last_payment_date.strftime('%d.%m.%Y') if last_payment_date else "Не указана"
 
         text += (
-            f"{name}\n"
-            f"ID: {user_id}\n"
-            f"День оплаты: {payment_day}\n"
-            f"Абонемент до: {end_date_text}\n"
-            f"Последняя оплата: {last_payment_text}\n"
-            f"Особый график: {'Да' if has_custom_schedule else 'Нет'}\n\n"
+            f"⚠️ Игрок не оплатил\n"
+            f"👤 Игрок: {name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"📅 Плановая дата оплаты: {payment_day}\n"
+            f"💳 Абонемент до: {end_date_text}\n"
+            f"📌 Последняя оплата: {last_payment_text}\n"
+            f"💸 Нажал «Оплатил»: {'Да' if payment_claimed else 'Нет'}\n\n"
         )
 
     await update.message.reply_text(text)
@@ -492,13 +496,13 @@ async def open_mark_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         claimed_text = "Да" if payment_claimed else "Нет"
 
         text = (
-            f"{name}\n"
-            f"ID: {user_id}\n"
-            f"День оплаты: {payment_day}\n"
-            f"Абонемент до: {end_date_text}\n"
-            f"Последняя оплата: {last_payment_text}\n"
-            f"Игрок нажал 'Оплатил': {claimed_text}\n"
-            f"Особый график: {'Да' if has_custom_schedule else 'Нет'}"
+            f"💰 Подтверждение оплаты\n"
+            f"👤 Игрок: {name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"📅 Плановая дата оплаты: {payment_day}\n"
+            f"💳 Абонемент до: {end_date_text}\n"
+            f"📌 Последняя оплата: {last_payment_text}\n"
+            f"💸 Нажал «Оплатил»: {claimed_text}"
         )
 
         keyboard = [[
@@ -552,14 +556,13 @@ async def show_all_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
         claimed_text = "Да" if payment_claimed else "Нет"
 
         text += (
-            f"{name}\n"
-            f"ID: {user_id}\n"
-            f"Абонемент до: {end_date_text}\n"
-            f"День оплаты: {payment_day}\n"
-            f"Последняя оплата: {last_payment_text}\n"
-            f"Оплачено в текущем периоде: {paid_text}\n"
-            f"Игрок нажал 'Оплатил': {claimed_text}\n"
-            f"Особый график: {custom_text}\n\n"
+            f"👤 Игрок: {name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"💳 Абонемент до: {end_date_text}\n"
+            f"📅 Плановая дата оплаты: {payment_day}\n"
+            f"📌 Последняя оплата: {last_payment_text}\n"
+            f"✅ Оплата подтверждена: {paid_text}\n"
+            f"💸 Нажал «Оплатил»: {claimed_text}\n\n"
         )
 
     await update.message.reply_text(text)
