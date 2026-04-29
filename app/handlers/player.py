@@ -19,6 +19,7 @@ from app.handlers.coach import (
     show_all_subscriptions,
     back_to_coach_menu,
 )
+from app.repositories.payments import get_subscription_by_user_id
 
 
 async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -33,12 +34,43 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if status == "pending":
         text = "Твоя заявка сейчас на рассмотрении у тренера."
-    elif status == "approved":
-        text = "Ты одобрен тренером и получаешь уведомления."
-    elif status == "rejected":
+        await update.message.reply_text(text)
+        return
+
+    if status == "rejected":
         text = "Твоя заявка была отклонена. Ты можешь подать её снова."
-    else:
-        text = f"Текущий статус: {status}"
+        await update.message.reply_text(text)
+        return
+
+    if status != "approved":
+        await update.message.reply_text(f"Текущий статус: {status}")
+        return
+
+    subscription = get_subscription_by_user_id(user.id)
+
+    text = "Твой статус: одобрен ✅\n\n"
+
+    if not subscription:
+        text += "Данные абонемента пока не заполнены."
+        await update.message.reply_text(text)
+        return
+
+    user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed = subscription
+
+    end_date_text = subscription_end_date.strftime("%d.%m.%Y") if subscription_end_date else "Не указана"
+    last_payment_text = last_payment_date.strftime("%d.%m.%Y") if last_payment_date else "Не указана"
+    paid_text = "Да" if is_paid_current_period else "Нет"
+    custom_text = "Да" if has_custom_schedule else "Нет"
+    claimed_text = "Да" if payment_claimed else "Нет"
+
+    text += (
+        f"Абонемент до: {end_date_text}\n"
+        f"День оплаты: {payment_day}\n"
+        f"Последняя оплата: {last_payment_text}\n"
+        f"Оплачено в текущем периоде: {paid_text}\n"
+        f"Особый график: {custom_text}\n"
+        f"Отметка 'Оплатил': {claimed_text}"
+    )
 
     await update.message.reply_text(text)
 

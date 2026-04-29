@@ -8,6 +8,13 @@ def get_player_menu():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
+def get_approved_player_menu():
+    keyboard = [
+        ["Мой статус"],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
 def get_coach_menu():
     keyboard = [
         ["Новые заявки", "Одобренные игроки"],

@@ -14,6 +14,7 @@ from app.repositories.users import add_or_update_user, delete_user, get_user_by_
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
 from app.services.trainings import save_player_training_response
+from app.keyboards import get_approved_player_menu
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,7 +143,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text="Тренер одобрил твою заявку. Теперь ты будешь получать уведомления."
+                text="Тренер одобрил твою заявку. Теперь ты будешь получать уведомления.",
+                reply_markup=get_approved_player_menu()
             )
         except Exception:
             await context.bot.send_message(

@@ -33,6 +33,7 @@ from app.services.trainings import (
     schedule_training_repeat_job,
     start_training_reminder,
 )
+from app.keyboards import get_approved_player_menu, get_payments_menu, get_coach_menu
 
 
 async def test_subscription_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,7 +105,8 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.send_message(
             chat_id=user_id,
-            text="Тренер одобрил твою заявку. Теперь ты будешь получать уведомления."
+            text="Тренер одобрил твою заявку. Теперь ты будешь получать уведомления.",
+            reply_markup=get_approved_player_menu()
         )
     except Exception:
         await update.message.reply_text(
