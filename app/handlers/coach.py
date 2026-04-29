@@ -34,6 +34,12 @@ from app.services.trainings import (
     start_training_reminder,
 )
 from app.keyboards import get_approved_player_menu, get_payments_menu, get_coach_menu
+from app.services.trainings import (
+    build_training_responses_text,
+    build_training_status_text,
+    schedule_training_repeat_job,
+    start_training_reminder,
+)
 
 
 async def test_subscription_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -565,4 +571,12 @@ async def show_all_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
             f"💸 Нажал «Оплатил»: {claimed_text}\n\n"
         )
 
+    await update.message.reply_text(text)
+
+async def show_training_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    text = build_training_status_text(context.application)
     await update.message.reply_text(text)

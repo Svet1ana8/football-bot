@@ -12,6 +12,7 @@ from app.handlers.coach import (
     send_payment_reminder_by_month,
     send_training_reminder,
     show_training_responses,
+    show_training_status,
     open_payments_menu,
     show_ending_soon,
     show_unpaid_players,
@@ -195,4 +196,11 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await deny_access(update)
             return
         await show_all_subscriptions(update, context)
+        return
+
+    if text == "Статус напоминания":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await show_training_status(update, context)
         return

@@ -217,3 +217,52 @@ def schedule_training_repeat_job(application):
         first=timedelta(minutes=10),
         name="training_repeat_job",
     )
+
+from datetime import datetime
+
+
+def build_training_status_text(application) -> str:
+    active_training = get_active_training()
+
+    if not active_training:
+        return (
+            "📣 Статус напоминания о тренировке\n\n"
+            "Статус: не запущено"
+        )
+
+    training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
+
+    approved_users = [
+        row for row in get_users_by_status("approved")
+        if is_broadcast_recipient(row[0])
+    ]
+    total_players = len(approved_users)
+
+    responses = get_training_responses(training_id)
+    answered_count = len(responses)
+    not_answered_count = max(total_players - answered_count, 0)
+
+    jobs = application.job_queue.get_jobs_by_name("training_repeat_job")
+
+    next_run_text = "не найден"
+    if jobs:
+        job = jobs[0]
+        if job.next_t:
+            next_run = job.next_t
+            next_run_text = next_run.strftime("%d.%m.%Y %H:%M:%S")
+
+    start_time_text = start_time.strftime("%d.%m.%Y %H:%M") if start_time else "не указано"
+    last_reminder_text = last_reminder_time.strftime("%d.%m.%Y %H:%M") if last_reminder_time else "не указано"
+    stop_at_text = stop_at.strftime("%d.%m.%Y %H:%M") if stop_at else "не указано"
+
+    return (
+        "📣 Статус напоминания о тренировке\n\n"
+        f"Статус: {'активно' if is_active else 'остановлено'}\n"
+        f"Начато: {start_time_text}\n"
+        f"Последнее напоминание: {last_reminder_text}\n"
+        f"Остановится в: {stop_at_text}\n"
+        f"Следующий повтор: {next_run_text}\n\n"
+        f"Всего игроков: {total_players}\n"
+        f"Ответили: {answered_count}\n"
+        f"Не ответили: {not_answered_count}"
+    )
