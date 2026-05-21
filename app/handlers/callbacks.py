@@ -4,6 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from app.config import COACH_IDS
+from app.keyboards import get_approved_player_menu, get_player_menu
 from app.repositories.payments import (
     add_payment_history,
     confirm_payment,
@@ -15,8 +16,26 @@ from app.repositories.users import add_or_update_user, delete_user, get_user_by_
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
 from app.services.trainings import save_player_training_response
-from app.keyboards import get_approved_player_menu
-from app.keyboards import get_player_menu
+
+
+def get_display_name(user_id: int, fallback_first_name: str | None = None, fallback_username: str | None = None) -> str:
+    existing_user = get_user_by_id(user_id)
+
+    if existing_user:
+        saved_name = existing_user[2]
+        saved_username = existing_user[1]
+
+        name = saved_name or fallback_first_name or str(user_id)
+        if saved_username:
+            name += f" (@{saved_username})"
+        elif fallback_username:
+            name += f" (@{fallback_username})"
+        return name
+
+    name = fallback_first_name or str(user_id)
+    if fallback_username:
+        name += f" (@{fallback_username})"
+    return name
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -48,11 +67,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("training_yes_"):
         training_id = int(data.split("_")[2])
 
+        existing_user = get_user_by_id(query.from_user.id)
+        player_name = existing_user[2] if existing_user and existing_user[2] else query.from_user.first_name
+
         save_player_training_response(
             training_id=training_id,
             user_id=query.from_user.id,
             username=query.from_user.username,
-            first_name=query.from_user.first_name,
+            first_name=player_name,
             response="yes"
         )
 
@@ -67,11 +89,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("training_no_"):
         training_id = int(data.split("_")[2])
 
+        existing_user = get_user_by_id(query.from_user.id)
+        player_name = existing_user[2] if existing_user and existing_user[2] else query.from_user.first_name
+
         save_player_training_response(
             training_id=training_id,
             user_id=query.from_user.id,
             username=query.from_user.username,
-            first_name=query.from_user.first_name,
+            first_name=player_name,
             response="no"
         )
 
@@ -94,9 +119,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("Твоя отметка об оплате отправлена тренеру.")
         await query.edit_message_reply_markup(reply_markup=None)
 
-        player_name = query.from_user.first_name or str(query.from_user.id)
-        if query.from_user.username:
-            player_name += f" (@{query.from_user.username})"
+        player_name = get_display_name(
+            user_id=query.from_user.id,
+            fallback_first_name=query.from_user.first_name,
+            fallback_username=query.from_user.username
+        )
 
         text = (
             f"Игрок {player_name} сообщил, что оплатил.\n"
@@ -145,7 +172,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         create_subscription_for_user(target_user_id)
 
-        await query.edit_message_text(f"✅ Пользователь {target_user_id} одобрен.")
+        player_name = existing_user[2] or str(target_user_id)
+        await query.edit_message_text(f"✅ Игрок {player_name} одобрен.")
 
         try:
             await context.bot.send_message(
@@ -156,7 +184,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             await context.bot.send_message(
                 chat_id=query.from_user.id,
-                text=f"Пользователь {target_user_id} одобрен, но сообщение ему отправить не удалось."
+                text=f"Игрок {player_name} одобрен, но сообщение ему отправить не удалось."
             )
         return
 
@@ -166,10 +194,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         target_user_id = int(data.split("_")[2])
+        existing_user = get_user_by_id(target_user_id)
+        player_name = existing_user[2] if existing_user and existing_user[2] else str(target_user_id)
+
         deleted = delete_user(target_user_id)
 
         if deleted:
-            await query.edit_message_text(f"🗑 Игрок {target_user_id} удалён из базы.")
+            await query.edit_message_text(f"🗑 Игрок {player_name} удалён из базы.")
             try:
                 await context.bot.send_message(
                     chat_id=target_user_id,
@@ -189,6 +220,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         target_user_id = int(data.split("_")[2])
+        target_user = get_user_by_id(target_user_id)
+        player_name = target_user[2] if target_user and target_user[2] else str(target_user_id)
 
         today = date.today()
         new_end_date = today + timedelta(days=30)
@@ -205,7 +238,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await query.edit_message_text(
-            f"✅ Оплата игрока {target_user_id} подтверждена.\n"
+            f"✅ Оплата игрока {player_name} подтверждена.\n"
             f"Абонемент продлён до {new_end_date.strftime('%d.%m.%Y')}."
         )
 
@@ -228,6 +261,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         target_user_id = int(data.split("_")[2])
+        target_user = get_user_by_id(target_user_id)
+        player_name = target_user[2] if target_user and target_user[2] else str(target_user_id)
 
         reject_claimed_payment(target_user_id)
         add_payment_history(
@@ -239,7 +274,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("Отклонение получено")
 
         await query.edit_message_text(
-            f"❌ Оплата игрока {target_user_id} не подтверждена.\n"
+            f"❌ Оплата игрока {player_name} не подтверждена.\n"
             f"Напоминания об оплате продолжатся."
         )
 
@@ -275,7 +310,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status="rejected"
         )
 
-        await query.edit_message_text(f"❌ Пользователь {target_user_id} отклонён.")
+        player_name = existing_user[2] or str(target_user_id)
+        await query.edit_message_text(f"❌ Игрок {player_name} отклонён.")
 
         try:
             await context.bot.send_message(
@@ -285,6 +321,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             await context.bot.send_message(
                 chat_id=query.from_user.id,
-                text=f"Пользователь {target_user_id} отклонён, но сообщение ему отправить не удалось."
+                text=f"Игрок {player_name} отклонён, но сообщение ему отправить не удалось."
             )
         return

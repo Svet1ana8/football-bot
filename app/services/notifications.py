@@ -15,13 +15,16 @@ async def notify_coaches_about_request(context: ContextTypes.DEFAULT_TYPE, user_
 
     request_user_id, username, first_name, status = existing_user
 
-    text = "Новая заявка\n\n"
-    text += f"ID: {request_user_id}"
-    if first_name:
-        text += f"\nИмя: {first_name}"
-    if username:
-        text += f"\nusername: @{username}"
-    text += f"\nСтатус: {status}"
+    player_name = first_name or str(request_user_id)
+    username_text = f"@{username}" if username else "не указан"
+
+    text = (
+        "📩 Новая заявка\n\n"
+        f"👤 Игрок: {player_name}\n"
+        f"🆔 ID: {request_user_id}\n"
+        f"🔗 Username: {username_text}\n"
+        f"📌 Статус: {status}"
+    )
 
     keyboard = [[
         InlineKeyboardButton("✅ Одобрить", callback_data=f"approve_{request_user_id}"),

@@ -54,7 +54,17 @@ async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE)
 
     sent_count = 0
 
-    for user_id, username, first_name, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed in subscriptions:
+    for (
+        user_id,
+        username,
+        first_name,
+        payment_day,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) in subscriptions:
         if not is_broadcast_recipient(user_id):
             continue
 
@@ -89,7 +99,17 @@ async def send_unpaid_reminders(context: ContextTypes.DEFAULT_TYPE):
     message_text = build_payment_reminder_message()
     reply_markup = get_payment_keyboard()
 
-    for user_id, username, first_name, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed in subscriptions:
+    for (
+        user_id,
+        username,
+        first_name,
+        payment_day,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) in subscriptions:
         if not is_broadcast_recipient(user_id):
             continue
 
@@ -118,7 +138,17 @@ async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
     message_text = build_payment_reminder_message()
     reply_markup = get_payment_keyboard()
 
-    for user_id, username, first_name, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed in subscriptions:
+    for (
+        user_id,
+        username,
+        first_name,
+        payment_day,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) in subscriptions:
         if not is_broadcast_recipient(user_id):
             continue
 
@@ -149,7 +179,7 @@ def schedule_daily_payment_jobs(application):
     if not existing_unpaid_jobs:
         application.job_queue.run_repeating(
             send_unpaid_reminders,
-            interval=60,  # 60 секунд = 1 минута
-            first=10,  # первый запуск через 10 секунд после старта бота
+            interval=60,
+            first=10,
             name="unpaid_payment_reminders",
         )

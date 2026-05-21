@@ -218,19 +218,6 @@ def schedule_training_repeat_job(application):
         name="training_repeat_job",
     )
 
-from datetime import datetime
-
-
-from app.config import TIMEZONE
-
-
-from datetime import datetime, timedelta
-
-from app.config import TIMEZONE
-from app.repositories.trainings import get_active_training, get_training_responses
-from app.repositories.users import get_users_by_status
-from app.services.access import is_broadcast_recipient
-
 
 def build_training_status_text(application) -> str:
     active_training = get_active_training()

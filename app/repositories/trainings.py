@@ -51,7 +51,13 @@ def deactivate_training(training_id: int):
         conn.commit()
 
 
-def save_training_response(training_id: int, user_id: int, username: str | None, first_name: str | None, response: str):
+def save_training_response(
+    training_id: int,
+    user_id: int,
+    username: str | None,
+    first_name: str | None,
+    response: str
+):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -86,6 +92,7 @@ def get_user_response_for_training(training_id: int, user_id: int):
                 WHERE training_id = %s AND user_id = %s
             """, (training_id, user_id))
             return cur.fetchone()
+
 
 def get_player_training_stats(user_id: int):
     with get_connection() as conn:

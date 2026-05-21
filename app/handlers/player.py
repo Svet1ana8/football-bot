@@ -38,6 +38,13 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     status = existing_user[3]
 
+    if status == "awaiting_name":
+        await update.message.reply_text(
+            "📝 Заявка ещё не завершена.\n\n"
+            "Напиши своё имя и фамилию, чтобы отправить заявку тренеру."
+        )
+        return
+
     if status == "pending":
         await update.message.reply_text(
             "⏳ Статус заявки: на рассмотрении\n\n"
@@ -208,12 +215,35 @@ async def back_to_player_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+    text = update.message.text.strip()
+    user = update.effective_user
+    existing_user = get_user_by_id(user.id)
+
+    if existing_user and existing_user[3] == "awaiting_name":
+        full_name = text
+
+        if len(full_name.split()) < 2:
+            await update.message.reply_text(
+                "Пожалуйста, напиши имя и фамилию полностью.\n\n"
+                "Например: Иванов Иван"
+            )
+            return
+
+        add_or_update_user(
+            user_id=user.id,
+            username=user.username,
+            first_name=full_name,
+            status="pending"
+        )
+
+        await update.message.reply_text(
+            f"✅ Заявка отправлена тренеру.\n\n"
+            f"Имя: {full_name}"
+        )
+        await notify_coaches_about_request(context, user.id)
+        return
 
     if text == "Подать заявку":
-        user = update.effective_user
-        existing_user = get_user_by_id(user.id)
-
         if existing_user and existing_user[3] == "approved":
             await update.message.reply_text("Ты уже одобрен тренером и получаешь уведомления.")
             return
@@ -221,12 +251,14 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_or_update_user(
             user_id=user.id,
             username=user.username,
-            first_name=user.first_name,
-            status="pending"
+            first_name=existing_user[2] if existing_user else user.first_name,
+            status="awaiting_name"
         )
 
-        await update.message.reply_text("Твоя заявка отправлена тренеру. Ожидай подтверждения.")
-        await notify_coaches_about_request(context, user.id)
+        await update.message.reply_text(
+            "Напиши своё имя и фамилию.\n\n"
+            "Например: Иванов Иван"
+        )
         return
 
     if text == "Мой статус":

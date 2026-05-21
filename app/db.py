@@ -22,15 +22,6 @@ def init_db():
             """)
 
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS scheduled_messages (
-                    id SERIAL PRIMARY KEY,
-                    send_at TIMESTAMPTZ NOT NULL,
-                    message_text TEXT NOT NULL,
-                    status TEXT NOT NULL
-                )
-            """)
-
-            cur.execute("""
                 CREATE TABLE IF NOT EXISTS trainings (
                     id SERIAL PRIMARY KEY,
                     message_text TEXT NOT NULL,
@@ -59,7 +50,7 @@ def init_db():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS player_subscriptions (
                     user_id BIGINT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
-                    payment_day INTEGER NOT NULL DEFAULT 24,
+                    payment_day INTEGER NOT NULL DEFAULT 28,
                     subscription_end_date DATE,
                     last_payment_date DATE,
                     is_paid_current_period BOOLEAN NOT NULL DEFAULT FALSE,

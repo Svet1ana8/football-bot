@@ -8,9 +8,9 @@ def add_or_update_user(user_id: int, username: str | None, first_name: str | Non
                 INSERT INTO users (user_id, username, first_name, status)
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT(user_id) DO UPDATE SET
-                    username = excluded.username,
-                    first_name = excluded.first_name,
-                    status = excluded.status
+                    username = COALESCE(EXCLUDED.username, users.username),
+                    first_name = COALESCE(EXCLUDED.first_name, users.first_name),
+                    status = EXCLUDED.status
             """, (user_id, username, first_name, status))
         conn.commit()
 
