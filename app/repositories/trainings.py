@@ -86,3 +86,16 @@ def get_user_response_for_training(training_id: int, user_id: int):
                 WHERE training_id = %s AND user_id = %s
             """, (training_id, user_id))
             return cur.fetchone()
+
+def get_player_training_stats(user_id: int):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    COUNT(*) FILTER (WHERE response = 'yes') AS yes_count,
+                    COUNT(*) FILTER (WHERE response = 'no') AS no_count,
+                    COUNT(*) AS total_count
+                FROM training_responses
+                WHERE user_id = %s
+            """, (user_id,))
+            return cur.fetchone()

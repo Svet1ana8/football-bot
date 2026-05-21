@@ -23,6 +23,7 @@ from app.repositories.payments import get_subscription_by_user_id
 from app.repositories.users import add_or_update_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
+from app.repositories.trainings import get_player_training_stats
 
 
 async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,7 +104,24 @@ async def show_team_roster(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_attendance_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📊 Количество посещенных тренировок пока не заполнено.")
+    stats = get_player_training_stats(update.effective_user.id)
+
+    if not stats:
+        await update.message.reply_text("📊 Статистика тренировок пока недоступна.")
+        return
+
+    yes_count, no_count, total_count = stats
+
+    yes_count = yes_count or 0
+    no_count = no_count or 0
+    total_count = total_count or 0
+
+    await update.message.reply_text(
+        "📊 Статистика тренировок\n\n"
+        f"✅ Ответов «Приду»: {yes_count}\n"
+        f"❌ Ответов «Не приду»: {no_count}\n"
+        f"📌 Всего ответов: {total_count}"
+    )
 
 
 async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
