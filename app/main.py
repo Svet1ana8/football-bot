@@ -1,3 +1,5 @@
+from datetime import time
+
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -6,7 +8,7 @@ from telegram.ext import (
     filters,
 )
 
-from app.config import BOT_TOKEN
+from app.config import BOT_TOKEN, TIMEZONE
 from app.db import init_db
 from app.handlers.callbacks import button_handler
 from app.handlers.coach import (
@@ -19,8 +21,9 @@ from app.handlers.coach import (
 )
 from app.handlers.common import my_id, start
 from app.handlers.player import menu_handler
-from app.services.trainings import schedule_training_repeat_job
+from app.services.notifications import remind_coaches_about_pending_requests
 from app.services.payments import schedule_daily_payment_jobs
+from app.services.trainings import schedule_training_repeat_job
 
 
 def main():
@@ -44,6 +47,27 @@ def main():
 
     schedule_training_repeat_job(app)
     schedule_daily_payment_jobs(app)
+
+    app.job_queue.run_daily(
+        remind_coaches_about_pending_requests,
+        time=time(9, 0, tzinfo=TIMEZONE),
+        name="pending_requests_reminder_09",
+    )
+    app.job_queue.run_daily(
+        remind_coaches_about_pending_requests,
+        time=time(12, 0, tzinfo=TIMEZONE),
+        name="pending_requests_reminder_12",
+    )
+    app.job_queue.run_daily(
+        remind_coaches_about_pending_requests,
+        time=time(15, 0, tzinfo=TIMEZONE),
+        name="pending_requests_reminder_15",
+    )
+    app.job_queue.run_daily(
+        remind_coaches_about_pending_requests,
+        time=time(18, 0, tzinfo=TIMEZONE),
+        name="pending_requests_reminder_18",
+    )
 
     print("Бот запущен...")
     app.run_polling()
