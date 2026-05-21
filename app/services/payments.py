@@ -3,7 +3,12 @@ from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from app.config import TIMEZONE
+from app.config import (
+    PAYMENT_REMINDER_REPEAT_MINUTES,
+    SUBSCRIPTION_END_REMINDER_DAYS,
+    SUBSCRIPTION_END_REMINDER_TIME,
+    TIMEZONE,
+)
 from app.repositories.payments import (
     get_subscriptions_ending_soon_with_users,
     get_unpaid_subscriptions_with_users,
@@ -46,7 +51,7 @@ def build_payment_reminder_message() -> str:
 
 async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE):
     today = datetime.now(TIMEZONE).date()
-    subscriptions = get_subscriptions_ending_soon_with_users(today, days=5)
+    subscriptions = get_subscriptions_ending_soon_with_users(today, days=SUBSCRIPTION_END_REMINDER_DAYS)
 
     if not subscriptions:
         print("Нет игроков с абонементом, который скоро заканчивается.")
@@ -73,7 +78,7 @@ async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE)
 
         days_left = (subscription_end_date - today).days
 
-        if days_left not in [1, 2, 3, 4, 5]:
+        if days_left not in list(range(1, SUBSCRIPTION_END_REMINDER_DAYS + 1)):
             continue
 
         message_text = build_subscription_ending_message(first_name, days_left)
@@ -171,7 +176,7 @@ def schedule_daily_payment_jobs(application):
     if not existing_ending_jobs:
         application.job_queue.run_daily(
             send_subscription_ending_reminders,
-            time=datetime.strptime("10:00", "%H:%M").time(),
+            time=datetime.strptime(SUBSCRIPTION_END_REMINDER_TIME, "%H:%M").time(),
             name="subscription_ending_reminders",
         )
 
@@ -179,7 +184,7 @@ def schedule_daily_payment_jobs(application):
     if not existing_unpaid_jobs:
         application.job_queue.run_repeating(
             send_unpaid_reminders,
-            interval=60,
+            interval=PAYMENT_REMINDER_REPEAT_MINUTES * 60,
             first=10,
             name="unpaid_payment_reminders",
         )

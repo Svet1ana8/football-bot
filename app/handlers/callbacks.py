@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from app.config import COACH_IDS
+from app.config import COACH_IDS, SUBSCRIPTION_DURATION_DAYS
 from app.keyboards import get_approved_player_menu, get_player_menu
 from app.repositories.payments import (
     add_payment_history,
@@ -117,9 +117,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.answer("Можно изменить ответ")
         await query.edit_message_text(
-            "Сегодня тренировка в 21:00.\n"
-                "Локация: https://2gis.kz/almaty/geo/9430098963876822/76.921711,43.237997\n"
-                "Ты хочешь изменить свой ответ?",
+            f"Сегодня тренировка в {build_training_message().splitlines()[0].replace('Сегодня тренировка в ', '').replace('.', '')}\n"
+            "Хочешь изменить свой ответ?",
             reply_markup=get_change_answer_confirm_keyboard(training_id)
         )
         return
@@ -260,7 +259,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_name = target_user[2] if target_user and target_user[2] else str(target_user_id)
 
         today = date.today()
-        new_end_date = today + timedelta(days=30)
+        new_end_date = today + timedelta(days=SUBSCRIPTION_DURATION_DAYS)
 
         confirm_payment(
             user_id=target_user_id,

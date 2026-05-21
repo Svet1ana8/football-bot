@@ -3,7 +3,13 @@ from datetime import datetime, time, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from app.config import TIMEZONE
+from app.config import (
+    TRAINING_LOCATION_URL,
+    TRAINING_REMINDER_REPEAT_MINUTES,
+    TRAINING_TIME,
+    TRAINING_VOTE_CLOSE_TIME,
+    TIMEZONE,
+)
 from app.repositories.trainings import (
     create_training,
     deactivate_training,
@@ -20,8 +26,8 @@ from app.utils.dates import get_month_name_prepositional
 
 def build_training_message() -> str:
     return (
-        "Сегодня тренировка в 21:00.\n"
-        "Локация: https://2gis.kz/almaty/geo/9430098963876822/76.921711,43.237997\n"
+        f"Сегодня тренировка в {TRAINING_TIME}.\n"
+        f"Локация: {TRAINING_LOCATION_URL}\n"
         "Пожалуйста, ответь, придёшь ли ты."
     )
 
@@ -48,7 +54,8 @@ def get_change_answer_confirm_keyboard(training_id: int):
 
 def get_today_stop_at() -> datetime:
     now = datetime.now(TIMEZONE)
-    return datetime.combine(now.date(), time(19, 0), tzinfo=TIMEZONE)
+    hour, minute = map(int, TRAINING_VOTE_CLOSE_TIME.split(":"))
+    return datetime.combine(now.date(), time(hour, minute), tzinfo=TIMEZONE)
 
 
 async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE):
@@ -226,8 +233,8 @@ def schedule_training_repeat_job(application):
 
     application.job_queue.run_repeating(
         repeat_training_reminder_job,
-        interval=timedelta(hours=1),
-        first=timedelta(hours=1),
+        interval=timedelta(minutes=TRAINING_REMINDER_REPEAT_MINUTES),
+        first=timedelta(minutes=TRAINING_REMINDER_REPEAT_MINUTES),
         name="training_repeat_job",
     )
 
@@ -273,7 +280,7 @@ def build_training_status_text(application) -> str:
     if is_finished_by_time or is_finished_by_answers or not is_active:
         status_text = "завершено"
     else:
-        next_run = last_reminder_local + timedelta(hours=1) if last_reminder_local else None
+        next_run = last_reminder_local + timedelta(minutes=TRAINING_REMINDER_REPEAT_MINUTES) if last_reminder_local else None
 
         if next_run and stop_at_local and next_run <= stop_at_local:
             next_run_text = next_run.strftime("%d.%m.%Y %H:%M")

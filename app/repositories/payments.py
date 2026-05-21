@@ -1,9 +1,10 @@
 from datetime import date, timedelta
 
+from app.config import DEFAULT_PAYMENT_DAY
 from app.db import get_connection
 
 
-def create_subscription_for_user(user_id: int, payment_day: int = 28):
+def create_subscription_for_user(user_id: int, payment_day: int = DEFAULT_PAYMENT_DAY):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""

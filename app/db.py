@@ -1,6 +1,6 @@
 import psycopg
 
-from app.config import DATABASE_URL
+from app.config import DATABASE_URL, DEFAULT_PAYMENT_DAY
 
 
 def get_connection():
@@ -47,10 +47,10 @@ def init_db():
                 )
             """)
 
-            cur.execute("""
+            cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS player_subscriptions (
                     user_id BIGINT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
-                    payment_day INTEGER NOT NULL DEFAULT 28,
+                    payment_day INTEGER NOT NULL DEFAULT {DEFAULT_PAYMENT_DAY},
                     subscription_end_date DATE,
                     last_payment_date DATE,
                     is_paid_current_period BOOLEAN NOT NULL DEFAULT FALSE,
@@ -62,6 +62,11 @@ def init_db():
             cur.execute("""
                 ALTER TABLE player_subscriptions
                 ADD COLUMN IF NOT EXISTS payment_claimed BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+
+            cur.execute(f"""
+                ALTER TABLE player_subscriptions
+                ALTER COLUMN payment_day SET DEFAULT {DEFAULT_PAYMENT_DAY}
             """)
 
             cur.execute("""
