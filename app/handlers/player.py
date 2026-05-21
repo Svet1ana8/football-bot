@@ -125,7 +125,34 @@ async def show_attendance_count(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await my_status(update, context)
+    subscription = get_subscription_by_user_id(update.effective_user.id)
+
+    if not subscription:
+        await update.message.reply_text("💳 Данные по оплате пока не заполнены.")
+        return
+
+    (
+        user_id,
+        payment_day,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        has_custom_schedule,
+        payment_claimed,
+    ) = subscription
+
+    end_date_text = subscription_end_date.strftime("%d.%m.%Y") if subscription_end_date else "Не указана"
+    last_payment_text = last_payment_date.strftime("%d.%m.%Y") if last_payment_date else "Не указана"
+    paid_text = "Да" if is_paid_current_period else "Нет"
+    claimed_text = "Да" if payment_claimed else "Нет"
+
+    await update.message.reply_text(
+        "💳 Статус оплаты\n\n"
+        f"📅 Последняя оплата: {last_payment_text}\n"
+        f"💳 Оплачено до: {end_date_text}\n"
+        f"✅ Оплата подтверждена: {paid_text}\n"
+        f"💸 Отметка «Оплатил»: {claimed_text}"
+    )
 
 
 async def open_playbook_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
