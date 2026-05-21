@@ -10,7 +10,30 @@ def get_player_menu():
 
 def get_approved_player_menu():
     keyboard = [
-        ["Мой статус"],
+        ["Мой статус", "Статус оплаты"],
+        ["График тренировок", "Моя позиция"],
+        ["Состав команды", "Количество посещенных тренировок"],
+        ["Плейбук", "Обучающее видео"],
+        ["График игр", "Обучение"],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_playbook_menu():
+    keyboard = [
+        ["Нападение", "Защита"],
+        ["Назад"],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_learning_menu():
+    keyboard = [
+        ["Документация"],
+        ["Как восстанавливаться после игры и тренировок"],
+        ["Рекомендации перед игрой"],
+        ["Бонусы"],
+        ["Назад"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -32,6 +55,7 @@ def get_payments_menu():
         ["Кто не оплатил"],
         ["Отметить оплату"],
         ["Все абонементы"],
+        ["История оплат"],
         ["Назад"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
