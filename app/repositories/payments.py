@@ -227,3 +227,36 @@ def reject_claimed_payment(user_id: int):
                 WHERE user_id = %s
             """, (user_id,))
         conn.commit()
+
+def add_payment_history(user_id: int, action: str, comment: str | None = None):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO payment_history (user_id, action, comment)
+                VALUES (%s, %s, %s)
+            """, (user_id, action, comment))
+        conn.commit()
+
+
+def get_payment_history_by_user(user_id: int):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, user_id, action, created_at, comment
+                FROM payment_history
+                WHERE user_id = %s
+                ORDER BY created_at DESC
+            """, (user_id,))
+            return cur.fetchall()
+
+
+def get_all_payment_history(limit: int = 50):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, user_id, action, created_at, comment
+                FROM payment_history
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (limit,))
+            return cur.fetchall()

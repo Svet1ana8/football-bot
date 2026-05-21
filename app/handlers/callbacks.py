@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes
 
 from app.config import COACH_IDS
 from app.repositories.payments import (
+    add_payment_history,
     confirm_payment,
     create_subscription_for_user,
     mark_payment_claimed,
@@ -84,6 +85,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "payment_claimed":
         mark_payment_claimed(query.from_user.id, True)
+        add_payment_history(
+            user_id=query.from_user.id,
+            action="claimed",
+            comment="Игрок нажал кнопку 'Оплатил'"
+        )
 
         await query.answer("Твоя отметка об оплате отправлена тренеру.")
         await query.edit_message_reply_markup(reply_markup=None)
@@ -192,6 +198,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             today=today,
             new_end_date=new_end_date
         )
+        add_payment_history(
+            user_id=target_user_id,
+            action="confirmed",
+            comment=f"Тренер подтвердил оплату. Абонемент продлён до {new_end_date.strftime('%d.%m.%Y')}"
+        )
 
         await query.edit_message_text(
             f"✅ Оплата игрока {target_user_id} подтверждена.\n"
@@ -219,6 +230,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_user_id = int(data.split("_")[2])
 
         reject_claimed_payment(target_user_id)
+        add_payment_history(
+            user_id=target_user_id,
+            action="rejected",
+            comment="Тренер не подтвердил оплату"
+        )
 
         await query.answer("Отклонение получено")
 

@@ -73,4 +73,14 @@ def init_db():
                 ADD COLUMN IF NOT EXISTS payment_claimed BOOLEAN NOT NULL DEFAULT FALSE
             """)
 
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS payment_history (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                    action TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    comment TEXT
+                )
+            """)
+
         conn.commit()

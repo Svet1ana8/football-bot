@@ -7,6 +7,7 @@ from app.config import TIMEZONE
 from app.handlers.common import deny_access
 from app.keyboards import get_payments_menu, get_coach_menu
 from app.repositories.payments import (
+    get_all_payment_history,
     get_all_subscriptions,
     get_subscriptions_ending_soon,
     get_unpaid_subscriptions,
@@ -588,4 +589,51 @@ async def show_training_status(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     text = build_training_status_text(context.application)
+    await update.message.reply_text(text)
+
+async def show_payment_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    history = get_all_payment_history(limit=30)
+
+    if not history:
+        await update.message.reply_text("История оплат пока пуста.")
+        return
+
+    players_map = {
+        user_id: (username, first_name)
+        for user_id, username, first_name in get_users_by_status("approved")
+    }
+
+    text = "🧾 История оплат:\n\n"
+
+    action_map = {
+        "claimed": "Игрок нажал «Оплатил»",
+        "confirmed": "Тренер подтвердил оплату",
+        "rejected": "Тренер не подтвердил оплату",
+    }
+
+    for history_id, user_id, action, created_at, comment in history:
+        username, first_name = players_map.get(user_id, (None, None))
+        name = first_name or str(user_id)
+        if username:
+            name += f" (@{username})"
+
+        action_text = action_map.get(action, action)
+        created_at_text = created_at.strftime("%d.%m.%Y %H:%M")
+
+        text += (
+            f"👤 Игрок: {name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"🕒 Когда: {created_at_text}\n"
+            f"📌 Действие: {action_text}\n"
+        )
+
+        if comment:
+            text += f"💬 Комментарий: {comment}\n"
+
+        text += "\n"
+
     await update.message.reply_text(text)
