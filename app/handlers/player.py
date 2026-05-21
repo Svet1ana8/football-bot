@@ -72,7 +72,7 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         subscription_end_date,
         last_payment_date,
         is_paid_current_period,
-        has_custom_schedule,
+        _has_custom_schedule,
         payment_claimed,
     ) = subscription
 
@@ -137,7 +137,7 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         subscription_end_date,
         last_payment_date,
         is_paid_current_period,
-        has_custom_schedule,
+        _has_custom_schedule,
         payment_claimed,
     ) = subscription
 

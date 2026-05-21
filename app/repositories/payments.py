@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from app.db import get_connection
 
 
-def create_subscription_for_user(user_id: int, payment_day: int = 24):
+def create_subscription_for_user(user_id: int, payment_day: int = 28):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -76,15 +76,15 @@ def update_subscription_dates(
         conn.commit()
 
 
-def set_payment_day(user_id: int, payment_day: int, has_custom_schedule: bool = True):
+def set_payment_day(user_id: int, payment_day: int):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 UPDATE player_subscriptions
                 SET payment_day = %s,
-                    has_custom_schedule = %s
+                    has_custom_schedule = FALSE
                 WHERE user_id = %s
-            """, (payment_day, has_custom_schedule, user_id))
+            """, (payment_day, user_id))
         conn.commit()
 
 
@@ -227,6 +227,7 @@ def reject_claimed_payment(user_id: int):
                 WHERE user_id = %s
             """, (user_id,))
         conn.commit()
+
 
 def add_payment_history(user_id: int, action: str, comment: str | None = None):
     with get_connection() as conn:

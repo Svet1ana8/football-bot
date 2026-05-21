@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 
 from app.config import TIMEZONE
 from app.handlers.common import deny_access
-from app.keyboards import get_payments_menu, get_coach_menu
+from app.keyboards import get_approved_player_menu, get_coach_menu, get_payments_menu
 from app.repositories.payments import (
     get_all_payment_history,
     get_all_subscriptions,
@@ -29,12 +29,6 @@ from app.services.payments import (
     send_subscription_ending_reminders,
 )
 from app.services.schedules import scheduled_send_job
-from app.services.trainings import (
-    build_training_responses_text,
-    schedule_training_repeat_job,
-    start_training_reminder,
-)
-from app.keyboards import get_approved_player_menu, get_payments_menu, get_coach_menu
 from app.services.trainings import (
     build_training_responses_text,
     build_training_status_text,
@@ -427,7 +421,7 @@ async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "У кого скоро заканчивается абонемент:\n\n"
 
-    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed in subscriptions:
+    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
         username, first_name = players_map.get(user_id, (None, None))
 
         name = first_name or str(user_id)
@@ -467,7 +461,7 @@ async def show_unpaid_players(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     text = "Кто не оплатил:\n\n"
 
-    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed in subscriptions:
+    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
         username, first_name = players_map.get(user_id, (None, None))
 
         name = first_name or str(user_id)
@@ -502,7 +496,7 @@ async def open_mark_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Нет игроков для отметки оплаты.")
         return
 
-    for user_id, username, first_name, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed in subscriptions:
+    for user_id, username, first_name, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
         name = first_name or str(user_id)
         if username:
             name += f" (@{username})"
@@ -558,7 +552,7 @@ async def show_all_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
 
     text = "Все абонементы:\n\n"
 
-    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, has_custom_schedule, payment_claimed in subscriptions:
+    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
         username, first_name = players_map.get(user_id, (None, None))
 
         name = first_name or str(user_id)
@@ -568,7 +562,6 @@ async def show_all_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
         end_date_text = subscription_end_date.strftime('%d.%m.%Y') if subscription_end_date else "Не указана"
         last_payment_text = last_payment_date.strftime('%d.%m.%Y') if last_payment_date else "Не указана"
         paid_text = "Да" if is_paid_current_period else "Нет"
-        custom_text = "Да" if has_custom_schedule else "Нет"
         claimed_text = "Да" if payment_claimed else "Нет"
 
         text += (
@@ -583,6 +576,7 @@ async def show_all_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
 
     await update.message.reply_text(text)
 
+
 async def show_training_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):
         await deny_access(update)
@@ -590,6 +584,7 @@ async def show_training_status(update: Update, context: ContextTypes.DEFAULT_TYP
 
     text = build_training_status_text(context.application)
     await update.message.reply_text(text)
+
 
 async def show_payment_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):
