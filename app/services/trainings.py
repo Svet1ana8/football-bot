@@ -33,6 +33,19 @@ def get_training_keyboard(training_id: int):
     ]])
 
 
+def get_change_answer_keyboard(training_id: int):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔁 Изменить ответ", callback_data=f"change_training_answer_{training_id}")
+    ]])
+
+
+def get_change_answer_confirm_keyboard(training_id: int):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Да", callback_data=f"confirm_change_training_{training_id}"),
+        InlineKeyboardButton("❌ Нет", callback_data=f"cancel_change_training_{training_id}")
+    ]])
+
+
 def get_today_stop_at() -> datetime:
     now = datetime.now(TIMEZONE)
     return datetime.combine(now.date(), time(19, 0), tzinfo=TIMEZONE)
