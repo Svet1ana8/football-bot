@@ -297,16 +297,16 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_defense_playbook(update, context)
         return
 
-    if text == "Обучающее видео":
-        await show_training_videos(update, context)
-        return
-
     if text == "График игр":
         await show_games_schedule(update, context)
         return
 
     if text == "Обучение":
         await open_learning_menu(update, context)
+        return
+
+    if text == "Обучающие видео":
+        await show_training_videos(update, context)
         return
 
     if text == "Документация":
