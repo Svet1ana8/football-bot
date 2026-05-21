@@ -106,3 +106,23 @@ def get_player_training_stats(user_id: int):
                 WHERE user_id = %s
             """, (user_id,))
             return cur.fetchone()
+
+def get_month_attendance_stats(year: int, month: int):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    tr.user_id,
+                    tr.username,
+                    tr.first_name,
+                    COUNT(*) FILTER (WHERE tr.response = 'yes') AS yes_count,
+                    COUNT(*) FILTER (WHERE tr.response = 'no') AS no_count,
+                    COUNT(*) AS total_count
+                FROM training_responses tr
+                JOIN trainings t ON t.id = tr.training_id
+                WHERE EXTRACT(YEAR FROM t.start_time) = %s
+                  AND EXTRACT(MONTH FROM t.start_time) = %s
+                GROUP BY tr.user_id, tr.username, tr.first_name
+                ORDER BY yes_count DESC, tr.first_name NULLS LAST, tr.user_id
+            """, (year, month))
+            return cur.fetchall()

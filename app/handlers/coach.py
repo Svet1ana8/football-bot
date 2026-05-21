@@ -2,6 +2,7 @@ from datetime import datetime, date, time
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+from app.repositories.trainings import get_month_attendance_stats
 
 from app.config import TIMEZONE
 from app.handlers.common import deny_access
@@ -513,5 +514,37 @@ async def show_payment_history(update: Update, context: ContextTypes.DEFAULT_TYP
             text += f"💬 Комментарий: {comment}\n"
 
         text += "\n"
+
+    await update.message.reply_text(text)
+
+async def show_month_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    now = datetime.now(TIMEZONE)
+    stats = get_month_attendance_stats(now.year, now.month)
+
+    if not stats:
+        await update.message.reply_text("За этот месяц данных по посещаемости пока нет.")
+        return
+
+    text = f"📊 Посещаемость за {now.strftime('%m.%Y')}\n\n"
+
+    for user_id, username, first_name, yes_count, no_count, total_count in stats:
+        name = first_name or str(user_id)
+        if username:
+            name += f" (@{username})"
+
+        yes_count = yes_count or 0
+        no_count = no_count or 0
+        total_count = total_count or 0
+
+        text += (
+            f"👤 {name}\n"
+            f"✅ Был / ответил «Приду»: {yes_count}\n"
+            f"❌ Ответил «Не приду»: {no_count}\n"
+            f"📌 Всего ответов: {total_count}\n\n"
+        )
 
     await update.message.reply_text(text)

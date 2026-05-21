@@ -16,6 +16,7 @@ from app.handlers.coach import (
     show_training_responses,
     show_training_status,
     show_unpaid_players,
+    show_month_attendance,
 )
 from app.keyboards import get_approved_player_menu, get_learning_menu, get_playbook_menu
 from app.repositories.payments import get_subscription_by_user_id
@@ -414,4 +415,11 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await back_to_coach_menu(update, context)
             return
         await back_to_player_menu(update, context)
+        return
+
+    if text == "Посещаемость":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await show_month_attendance(update, context)
         return
