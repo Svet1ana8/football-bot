@@ -15,7 +15,7 @@ from app.repositories.payments import (
 from app.repositories.users import add_or_update_user, delete_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
-from app.services.trainings import save_player_training_response
+from app.services.trainings import get_training_keyboard, save_player_training_response
 
 
 def get_display_name(user_id: int, fallback_first_name: str | None = None, fallback_username: str | None = None) -> str:
@@ -78,11 +78,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response="yes"
         )
 
-        await query.answer("Ответ сохранён")
-        await query.edit_message_reply_markup(reply_markup=None)
-        await context.bot.send_message(
-            chat_id=query.from_user.id,
-            text="✅ Ответ сохранён: ты придёшь на тренировку."
+        await query.answer("Ответ обновлён")
+        await query.edit_message_text(
+            "✅ Ты отметил(а), что придёшь на тренировку.\n\n"
+            "Если планы изменятся, ты можешь выбрать другой вариант.",
+            reply_markup=get_training_keyboard(training_id)
         )
         return
 
@@ -100,11 +100,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response="no"
         )
 
-        await query.answer("Ответ сохранён")
-        await query.edit_message_reply_markup(reply_markup=None)
-        await context.bot.send_message(
-            chat_id=query.from_user.id,
-            text="❌ Ответ сохранён: ты не придёшь на тренировку."
+        await query.answer("Ответ обновлён")
+        await query.edit_message_text(
+            "❌ Ты отметил(а), что не придёшь на тренировку.\n\n"
+            "Если планы изменятся, ты можешь выбрать другой вариант.",
+            reply_markup=get_training_keyboard(training_id)
         )
         return
 
