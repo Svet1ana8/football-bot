@@ -6,7 +6,6 @@ from app.handlers.coach import (
     approved,
     back_to_coach_menu,
     coach,
-    list_scheduled,
     open_mark_payment,
     open_payments_menu,
     send_payment_reminder_by_month,
@@ -306,13 +305,6 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await deny_access(update)
             return
         await approved(update, context)
-        return
-
-    if text == "Запланированные рассылки":
-        if not is_coach(update.effective_user.id):
-            await deny_access(update)
-            return
-        await list_scheduled(update, context)
         return
 
     if text == "Напомнить об оплате":

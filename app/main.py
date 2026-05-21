@@ -13,18 +13,14 @@ from app.handlers.coach import (
     approve,
     approved,
     coach,
-    delete_schedule,
-    list_scheduled,
     reject,
-    schedule_message,
     send_message_to_approved,
+    test_subscription_reminders,
 )
 from app.handlers.common import my_id, start
 from app.handlers.player import menu_handler
-from app.services.schedules import restore_jobs
 from app.services.trainings import schedule_training_repeat_job
 from app.services.payments import schedule_daily_payment_jobs
-from app.handlers.coach import test_subscription_reminders
 
 
 def main():
@@ -42,14 +38,10 @@ def main():
     app.add_handler(CommandHandler("reject", reject))
     app.add_handler(CommandHandler("approved", approved))
     app.add_handler(CommandHandler("send", send_message_to_approved))
-    app.add_handler(CommandHandler("schedule", schedule_message))
-    app.add_handler(CommandHandler("scheduled", list_scheduled))
-    app.add_handler(CommandHandler("delete_schedule", delete_schedule))
+    app.add_handler(CommandHandler("test_sub_reminders", test_subscription_reminders))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_handler))
-    app.add_handler(CommandHandler("test_sub_reminders", test_subscription_reminders))
 
-    restore_jobs(app)
     schedule_training_repeat_job(app)
     schedule_daily_payment_jobs(app)
 

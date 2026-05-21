@@ -13,11 +13,6 @@ from app.repositories.payments import (
     get_unpaid_subscriptions,
     get_unpaid_subscriptions_with_users,
 )
-from app.repositories.schedules import (
-    create_scheduled_message,
-    delete_scheduled_message,
-    get_all_scheduled_messages,
-)
 from app.repositories.users import (
     add_or_update_user,
     get_user_by_id,
@@ -28,7 +23,6 @@ from app.services.payments import (
     send_manual_payment_reminders,
     send_subscription_ending_reminders,
 )
-from app.services.schedules import scheduled_send_job
 from app.services.trainings import (
     build_training_responses_text,
     build_training_status_text,
@@ -223,117 +217,6 @@ async def send_message_to_approved(update: Update, context: ContextTypes.DEFAULT
         f"Успешно отправлено: {success_count}\n"
         f"Ошибок: {fail_count}"
     )
-
-
-async def schedule_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_coach(update.effective_user.id):
-        await deny_access(update)
-        return
-
-    full_text = update.message.text.replace("/schedule", "", 1).strip()
-
-    if not full_text:
-        await update.message.reply_text(
-            "Используй команду так:\n"
-            "/schedule 30.04.2026 21:00 Текст сообщения"
-        )
-        return
-
-    parts = full_text.split(" ", 2)
-
-    if len(parts) < 3:
-        await update.message.reply_text(
-            "Неверный формат.\n"
-            "Пример:\n"
-            "/schedule 30.04.2026 21:00 Напоминаю об оплате тренировок"
-        )
-        return
-
-    date_part = parts[0]
-    time_part = parts[1]
-    message_text = parts[2].strip()
-
-    try:
-        send_at = datetime.strptime(
-            f"{date_part} {time_part}", "%d.%m.%Y %H:%M"
-        ).replace(tzinfo=TIMEZONE)
-    except ValueError:
-        await update.message.reply_text(
-            "Неверный формат даты или времени.\n"
-            "Используй так: ДД.ММ.ГГГГ ЧЧ:ММ"
-        )
-        return
-
-    if send_at <= datetime.now(TIMEZONE):
-        await update.message.reply_text("Нельзя запланировать рассылку на прошедшее время.")
-        return
-
-    message_id = create_scheduled_message(send_at, message_text)
-
-    context.job_queue.run_once(
-        scheduled_send_job,
-        when=send_at,
-        data={"message_id": message_id},
-        name=f"scheduled_message_{message_id}"
-    )
-
-    await update.message.reply_text(
-        f"Рассылка запланирована.\n"
-        f"ID: {message_id}\n"
-        f"Дата и время: {send_at}\n"
-        f"Текст: {message_text}"
-    )
-
-
-async def list_scheduled(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_coach(update.effective_user.id):
-        await deny_access(update)
-        return
-
-    messages = get_all_scheduled_messages()
-
-    if not messages:
-        await update.message.reply_text("Запланированных рассылок нет.")
-        return
-
-    text = "Запланированные рассылки:\n\n"
-    for message_id, send_at, message_text, status in messages:
-        text += (
-            f"ID: {message_id}\n"
-            f"Дата: {send_at}\n"
-            f"Статус: {status}\n"
-            f"Текст: {message_text}\n\n"
-        )
-
-    await update.message.reply_text(text)
-
-
-async def delete_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_coach(update.effective_user.id):
-        await deny_access(update)
-        return
-
-    if not context.args:
-        await update.message.reply_text("Используй команду так: /delete_schedule ID")
-        return
-
-    try:
-        message_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("ID должен быть числом.")
-        return
-
-    deleted = delete_scheduled_message(message_id)
-
-    current_jobs = context.application.job_queue.jobs()
-    for job in current_jobs:
-        if job.name == f"scheduled_message_{message_id}":
-            job.schedule_removal()
-
-    if deleted:
-        await update.message.reply_text(f"Запланированная рассылка {message_id} удалена.")
-    else:
-        await update.message.reply_text("Рассылка с таким ID не найдена.")
 
 
 async def send_payment_reminder_by_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
