@@ -1,10 +1,11 @@
 from datetime import datetime, date, time
 
+from app.config import TIMEZONE, TRAINING_VOTE_CLOSE_TIME, TRAINING_REMINDER_REPEAT_MINUTES
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from app.repositories.trainings import get_month_attendance_stats
 
-from app.config import TIMEZONE
 from app.handlers.common import deny_access
 from app.keyboards import get_approved_player_menu, get_coach_menu, get_payments_menu
 from app.repositories.payments import (
@@ -244,9 +245,12 @@ async def send_training_reminder(update: Update, context: ContextTypes.DEFAULT_T
 
     now_local = datetime.now(TIMEZONE)
 
-    if now_local.time() >= time(19, 0):
+    close_hour, close_minute = map(int, TRAINING_VOTE_CLOSE_TIME.split(":"))
+    vote_close_time = time(close_hour, close_minute)
+
+    if now_local.time() >= vote_close_time:
         await update.message.reply_text(
-            "После 19:00 напоминание о тренировке запускать нельзя. "
+            f"После {TRAINING_VOTE_CLOSE_TIME} напоминание о тренировке запускать нельзя. "
             "Если нужно, запусти его заранее до начала тренировки."
         )
         return
@@ -263,7 +267,7 @@ async def send_training_reminder(update: Update, context: ContextTypes.DEFAULT_T
         f"Напоминание о тренировке отправлено.\n"
         f"Успешно: {result['success_count']}\n"
         f"Ошибок: {result['fail_count']}\n"
-        f"Повторы будут отправляться каждый 1 час до {result['stop_at'].strftime('%H:%M')}."
+        f"Повторы будут отправляться каждые {TRAINING_REMINDER_REPEAT_MINUTES} мин до {result['stop_at'].strftime('%H:%M')}."
     )
 
 
