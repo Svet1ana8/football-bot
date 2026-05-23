@@ -30,6 +30,12 @@ from app.services.trainings import (
     get_training_keyboard,
     save_player_training_response,
 )
+from app.repositories.game_schedule import (
+    add_game_schedule,
+    deactivate_game_schedule,
+    get_game_schedule_by_id,
+    get_upcoming_game_schedule,
+)
 
 
 def get_display_name(
@@ -146,6 +152,60 @@ def build_existing_trainings_keyboard(schedule, callback_prefix: str) -> list[tu
                 InlineKeyboardButton(
                     str(training_date.day),
                     callback_data=f"{callback_prefix}_{schedule_id}",
+                )
+            )
+
+            if len(current_row) == 4:
+                rows.append(current_row)
+                current_row = []
+
+        if current_row:
+            rows.append(current_row)
+
+        title = f"{months[month]} {year}"
+        result.append((title, InlineKeyboardMarkup(rows)))
+
+    return result
+
+def format_game_schedule_row(game_date, game_time, opponent_name, comment=None) -> str:
+    text = f"{get_weekday_name(game_date)} — {game_date.strftime('%d.%m.%Y')}, {game_time.strftime('%H:%M')}\nСоперник: {opponent_name}"
+    if comment:
+        text += f"\nКомментарий: {comment}"
+    return text
+
+
+def build_existing_games_keyboard(schedule, callback_prefix: str) -> list[tuple[str, InlineKeyboardMarkup]]:
+    months = {
+        1: "Январь",
+        2: "Февраль",
+        3: "Март",
+        4: "Апрель",
+        5: "Май",
+        6: "Июнь",
+        7: "Июль",
+        8: "Август",
+        9: "Сентябрь",
+        10: "Октябрь",
+        11: "Ноябрь",
+        12: "Декабрь",
+    }
+
+    grouped = {}
+    for game_id, game_date, game_time, opponent_name, comment, is_active, created_at in schedule:
+        key = (game_date.year, game_date.month)
+        grouped.setdefault(key, []).append((game_id, game_date, game_time, opponent_name, comment))
+
+    result = []
+
+    for (year, month), items in grouped.items():
+        rows = []
+        current_row = []
+
+        for game_id, game_date, game_time, opponent_name, comment in items:
+            current_row.append(
+                InlineKeyboardButton(
+                    str(game_date.day),
+                    callback_data=f"{callback_prefix}_{game_id}",
                 )
             )
 
@@ -744,5 +804,102 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=query.from_user.id,
                 text=f"Игрок {player_name} отклонён, но сообщение ему отправить не удалось."
+            )
+        return
+
+    if data.startswith("game_add_date_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        selected_date = data.replace("game_add_date_", "", 1)
+        context.user_data["selected_game_date"] = selected_date
+        context.user_data["awaiting_game_details"] = True
+
+        await query.edit_message_text(
+            "Отправь данные матча в формате:\n\n"
+            "Команда | ЧЧ:ММ\n\n"
+            "Например:\n"
+            "Астана Барс | 19:00"
+        )
+        return
+
+    if data.startswith("game_view_"):
+        game_id = int(data.split("_")[-1])
+        row = get_game_schedule_by_id(game_id)
+
+        if not row:
+            await query.answer("Матч не найден", show_alert=True)
+            return
+
+        _, game_date, game_time, opponent_name, comment, is_active, created_at = row
+
+        await query.answer(
+            format_game_schedule_row(game_date, game_time, opponent_name, comment),
+            show_alert=True
+        )
+        return
+
+    if data.startswith("game_player_view_"):
+        game_id = int(data.split("_")[-1])
+        row = get_game_schedule_by_id(game_id)
+
+        if not row:
+            await query.answer("Матч не найден", show_alert=True)
+            return
+
+        _, game_date, game_time, opponent_name, comment, is_active, created_at = row
+
+        await query.answer(
+            format_game_schedule_row(game_date, game_time, opponent_name, comment),
+            show_alert=True
+        )
+        return
+
+    if data.startswith("game_delete_direct_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        game_id = int(data.split("_")[-1])
+        row = get_game_schedule_by_id(game_id)
+
+        if not row:
+            await query.edit_message_text("Матч не найден.")
+            return
+
+        _, game_date, game_time, opponent_name, comment, is_active, created_at = row
+
+        deactivate_game_schedule(game_id)
+
+        await query.edit_message_text(
+            "🗑 Матч удалён.\n\n"
+            f"{format_game_schedule_row(game_date, game_time, opponent_name, comment)}"
+        )
+
+        remaining_games = get_upcoming_game_schedule()
+
+        if not remaining_games:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="Все матчи удалены."
+            )
+            return
+
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text="Выбери следующий матч для удаления:"
+        )
+
+        month_keyboards = build_existing_games_keyboard(
+            remaining_games,
+            "game_delete_direct"
+        )
+
+        for title, reply_markup in month_keyboards:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=title,
+                reply_markup=reply_markup
             )
         return

@@ -43,6 +43,14 @@ from app.services.trainings import (
     schedule_training_repeat_job,
     start_training_reminder,
 )
+from app.keyboards import get_games_schedule_menu
+from app.repositories.game_schedule import (
+    add_game_schedule,
+    deactivate_game_schedule,
+    get_game_schedule_by_id,
+    get_upcoming_game_schedule,
+)
+from app.repositories.users import get_users_by_status
 
 
 def get_weekday_name(dt: date) -> str:
@@ -132,6 +140,60 @@ def build_existing_trainings_keyboard(schedule, callback_prefix: str) -> list[tu
                 InlineKeyboardButton(
                     str(training_date.day),
                     callback_data=f"{callback_prefix}_{schedule_id}",
+                )
+            )
+
+            if len(current_row) == 4:
+                rows.append(current_row)
+                current_row = []
+
+        if current_row:
+            rows.append(current_row)
+
+        title = f"{months[month]} {year}"
+        result.append((title, InlineKeyboardMarkup(rows)))
+
+    return result
+
+def format_game_schedule_row(game_date, game_time, opponent_name, comment=None) -> str:
+    text = f"{get_weekday_name(game_date)} — {game_date.strftime('%d.%m.%Y')}, {game_time.strftime('%H:%M')}\nСоперник: {opponent_name}"
+    if comment:
+        text += f"\nКомментарий: {comment}"
+    return text
+
+
+def build_existing_games_keyboard(schedule, callback_prefix: str) -> list[tuple[str, InlineKeyboardMarkup]]:
+    months = {
+        1: "Январь",
+        2: "Февраль",
+        3: "Март",
+        4: "Апрель",
+        5: "Май",
+        6: "Июнь",
+        7: "Июль",
+        8: "Август",
+        9: "Сентябрь",
+        10: "Октябрь",
+        11: "Ноябрь",
+        12: "Декабрь",
+    }
+
+    grouped = {}
+    for game_id, game_date, game_time, opponent_name, comment, is_active, created_at in schedule:
+        key = (game_date.year, game_date.month)
+        grouped.setdefault(key, []).append((game_id, game_date, game_time, opponent_name, comment))
+
+    result = []
+
+    for (year, month), items in grouped.items():
+        rows = []
+        current_row = []
+
+        for game_id, game_date, game_time, opponent_name, comment in items:
+            current_row.append(
+                InlineKeyboardButton(
+                    str(game_date.day),
+                    callback_data=f"{callback_prefix}_{game_id}",
                 )
             )
 
@@ -392,6 +454,128 @@ async def show_training_responses(update: Update, context: ContextTypes.DEFAULT_
         return
 
     await update.message.reply_text(build_training_responses_text())
+
+
+async def open_games_schedule_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    context.user_data["awaiting_game_details"] = False
+    context.user_data.pop("selected_game_date", None)
+
+    await update.message.reply_text(
+        "Календарь игр. Выбери действие:",
+        reply_markup=get_games_schedule_menu()
+    )
+
+
+async def show_games_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    schedule = get_upcoming_game_schedule()
+
+    if not schedule:
+        await update.message.reply_text("📅 Календарь игр пока пуст.")
+        return
+
+    month_keyboards = build_existing_games_keyboard(schedule, "game_view")
+
+    for title, reply_markup in month_keyboards:
+        await update.message.reply_text(title, reply_markup=reply_markup)
+
+
+async def start_add_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    context.user_data["awaiting_game_details"] = False
+    context.user_data.pop("selected_game_date", None)
+
+    today = date.today()
+    keyboard = build_month_dates_keyboard(today.year, today.month, "game_add_date")
+
+    await update.message.reply_text(
+        "Выбери дату матча:",
+        reply_markup=keyboard
+    )
+
+
+async def start_delete_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    schedule = get_upcoming_game_schedule()
+
+    if not schedule:
+        await update.message.reply_text("Нет матчей для удаления.")
+        return
+
+    await update.message.reply_text("Выбери матч для удаления:")
+
+    month_keyboards = build_existing_games_keyboard(schedule, "game_delete_direct")
+
+    for title, reply_markup in month_keyboards:
+        await update.message.reply_text(title, reply_markup=reply_markup)
+
+
+async def handle_game_details_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = update.message.text.strip()
+    selected_game_date = context.user_data.get("selected_game_date")
+
+    if not selected_game_date:
+        await update.message.reply_text("Сначала выбери дату матча.")
+        return
+
+    parts = raw_text.split(" | ")
+    if len(parts) != 2:
+        await update.message.reply_text(
+            "Отправь данные в формате:\n\n"
+            "Команда | ЧЧ:ММ\n\n"
+            "Например:\n"
+            "Астана Барс | 19:00"
+        )
+        return
+
+    opponent_name = parts[0].strip()
+    time_text = parts[1].strip()
+
+    try:
+        game_time = datetime.strptime(time_text, "%H:%M").time()
+    except ValueError:
+        await update.message.reply_text("Время должно быть в формате ЧЧ:ММ")
+        return
+
+    game_date = datetime.strptime(selected_game_date, "%Y-%m-%d").date()
+
+    add_game_schedule(
+        game_date=game_date,
+        game_time=game_time,
+        opponent_name=opponent_name,
+        comment=None,
+    )
+
+    context.user_data["awaiting_game_details"] = False
+    context.user_data.pop("selected_game_date", None)
+
+    await update.message.reply_text(
+        "✅ Матч добавлен.\n\n"
+        f"{format_game_schedule_row(game_date, game_time, opponent_name)}"
+    )
+
+    approved_users = get_users_by_status("approved")
+    for player_id, username, first_name in approved_users:
+        try:
+            await context.bot.send_message(
+                chat_id=player_id,
+                text=f"Привет! {game_date.strftime('%d.%m.%Y')} в {game_time.strftime('%H:%M')} у нас будет игра с {opponent_name}"
+            )
+        except Exception:
+            pass
 
 
 async def open_payments_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):

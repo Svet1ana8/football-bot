@@ -36,6 +36,14 @@ from app.keyboards import (
     get_special_teams_video_menu,
     get_video_menu,
 )
+from app.handlers.coach import (
+    open_games_schedule_menu,
+    show_games_calendar,
+    start_add_game,
+    start_delete_game,
+    handle_game_details_input,
+)
+from app.repositories.game_schedule import get_upcoming_game_schedule
 from app.repositories.payments import get_subscription_by_user_id
 from app.repositories.training_schedule import get_upcoming_training_schedule
 from app.repositories.users import add_or_update_user, get_user_by_id
@@ -106,6 +114,67 @@ def build_player_trainings_keyboard(schedule) -> list[tuple[str, InlineKeyboardM
         result.append((title, InlineKeyboardMarkup(rows)))
 
     return result
+
+def build_player_games_keyboard(schedule) -> list[tuple[str, InlineKeyboardMarkup]]:
+    months = {
+        1: "Январь",
+        2: "Февраль",
+        3: "Март",
+        4: "Апрель",
+        5: "Май",
+        6: "Июнь",
+        7: "Июль",
+        8: "Август",
+        9: "Сентябрь",
+        10: "Октябрь",
+        11: "Ноябрь",
+        12: "Декабрь",
+    }
+
+    grouped = {}
+    for game_id, game_date, game_time, opponent_name, comment, is_active, created_at in schedule:
+        key = (game_date.year, game_date.month)
+        grouped.setdefault(key, []).append((game_id, game_date, game_time, opponent_name, comment))
+
+    result = []
+
+    for (year, month), items in grouped.items():
+        rows = []
+        current_row = []
+
+        for game_id, game_date, game_time, opponent_name, comment in items:
+            current_row.append(
+                InlineKeyboardButton(
+                    str(game_date.day),
+                    callback_data=f"game_player_view_{game_id}",
+                )
+            )
+
+            if len(current_row) == 4:
+                rows.append(current_row)
+                current_row = []
+
+        if current_row:
+            rows.append(current_row)
+
+        title = f"{months[month]} {year}"
+        result.append((title, InlineKeyboardMarkup(rows)))
+
+    return result
+
+async def show_games_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    schedule = get_upcoming_game_schedule()
+
+    if not schedule:
+        await update.message.reply_text("📅 График игр пока пуст.")
+        return
+
+    await update.message.reply_text("🏆 График игр")
+
+    month_keyboards = build_player_games_keyboard(schedule)
+
+    for title, reply_markup in month_keyboards:
+        await update.message.reply_text(title, reply_markup=reply_markup)
 
 
 async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -346,6 +415,38 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user = update.effective_user
     existing_user = get_user_by_id(user.id)
+
+    if text == "Календарь игр":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await open_games_schedule_menu(update, context)
+        return
+
+    if text == "Показать календарь игр":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await show_games_calendar(update, context)
+        return
+
+    if text == "Добавить матч":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await start_add_game(update, context)
+        return
+
+    if text == "Удалить матч":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await start_delete_game(update, context)
+        return
+
+    if is_coach(user.id) and context.user_data.get("awaiting_game_details"):
+        await handle_game_details_input(update, context)
+        return
 
     if text == "Назад":
         context.user_data["awaiting_training_schedule_add"] = False
