@@ -107,7 +107,9 @@ def build_month_dates_keyboard(year: int, month: int, prefix: str) -> InlineKeyb
     if current_row:
         rows.append(current_row)
 
-    rows.append([InlineKeyboardButton("✍️ Выбрать дату", callback_data=f"{prefix}_manual")])
+    if prefix != "training_add_date":
+        rows.append([InlineKeyboardButton("✍️ Выбрать дату", callback_data=f"{prefix}_manual")])
+
     return InlineKeyboardMarkup(rows)
 
 
@@ -585,18 +587,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("У тебя нет доступа к этому действию.")
             return
 
-        suffix = data.replace("training_add_date_", "", 1)
-
-        if suffix == "manual":
-            context.user_data["awaiting_training_schedule_manual_date"] = True
-            context.user_data.pop("transfer_training_schedule_id", None)
-            await query.edit_message_text(
-                "Отправь дату и время новой тренировки в формате:\n\n"
-                "ДД.ММ.ГГГГ ЧЧ:ММ"
-            )
-            return
-
-        selected_date = datetime.strptime(suffix, "%Y-%m-%d").date()
+        selected_date = datetime.strptime(data.replace("training_add_date_", "", 1), "%Y-%m-%d").date()
         training_time = datetime.strptime("21:00", "%H:%M").time()
 
         add_training_schedule(
