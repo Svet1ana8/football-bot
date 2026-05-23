@@ -1,4 +1,5 @@
 from datetime import datetime, date, time
+import calendar
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -42,6 +43,62 @@ from app.services.trainings import (
     schedule_training_repeat_job,
     start_training_reminder,
 )
+
+
+def get_weekday_name(dt: date) -> str:
+    weekdays = {
+        0: "Понедельник",
+        1: "Вторник",
+        2: "Среда",
+        3: "Четверг",
+        4: "Пятница",
+        5: "Суббота",
+        6: "Воскресенье",
+    }
+    return weekdays[dt.weekday()]
+
+
+def format_training_schedule_row(training_date, training_time, comment=None) -> str:
+    text = f"{get_weekday_name(training_date)} — {training_date.strftime('%d.%m.%Y')}, {training_time.strftime('%H:%M')}"
+    if comment:
+        text += f"\nКомментарий: {comment}"
+    return text
+
+
+def build_training_action_keyboard(schedule_id: int) -> InlineKeyboardMarkup:
+    keyboard = [
+        [
+            InlineKeyboardButton("🗑 Удалить", callback_data=f"training_delete_{schedule_id}"),
+            InlineKeyboardButton("📅 Перенести", callback_data=f"training_transfer_{schedule_id}"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def build_month_dates_keyboard(year: int, month: int, prefix: str) -> InlineKeyboardMarkup:
+    _, last_day = calendar.monthrange(year, month)
+
+    rows = []
+    current_row = []
+
+    for day in range(1, last_day + 1):
+        dt = date(year, month, day)
+        current_row.append(
+            InlineKeyboardButton(
+                str(day),
+                callback_data=f"{prefix}_{dt.isoformat()}",
+            )
+        )
+
+        if len(current_row) == 4:
+            rows.append(current_row)
+            current_row = []
+
+    if current_row:
+        rows.append(current_row)
+
+    rows.append([InlineKeyboardButton("✍️ Выбрать дату", callback_data=f"{prefix}_manual")])
+    return InlineKeyboardMarkup(rows)
 
 
 async def test_subscription_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -357,6 +414,8 @@ async def open_training_schedule_menu(update: Update, context: ContextTypes.DEFA
 
     context.user_data["awaiting_training_schedule_add"] = False
     context.user_data["awaiting_training_schedule_delete"] = False
+    context.user_data["awaiting_training_schedule_manual_date"] = False
+    context.user_data.pop("transfer_training_schedule_id", None)
 
     await update.message.reply_text(
         "Календарь тренировок. Выбери действие:",
@@ -374,16 +433,6 @@ async def show_training_calendar(update: Update, context: ContextTypes.DEFAULT_T
     if not schedule:
         await update.message.reply_text("📅 Календарь тренировок пока пуст.")
         return
-
-    weekdays = {
-        0: "Понедельник",
-        1: "Вторник",
-        2: "Среда",
-        3: "Четверг",
-        4: "Пятница",
-        5: "Суббота",
-        6: "Воскресенье",
-    }
 
     months = {
         1: "Январь",
@@ -411,14 +460,7 @@ async def show_training_calendar(update: Update, context: ContextTypes.DEFAULT_T
         parts.append(f"\n{months[month]} {year}\n")
 
         for training_date, training_time, comment in items:
-            weekday_name = weekdays[training_date.weekday()]
-            date_text = training_date.strftime("%d.%m.%Y")
-            time_text = training_time.strftime("%H:%M")
-
-            line = f"{weekday_name} — {date_text}, {time_text}"
-            if comment:
-                line += f"\nКомментарий: {comment}"
-
+            line = format_training_schedule_row(training_date, training_time, comment)
             parts.append(line)
             parts.append("")
 
@@ -430,14 +472,17 @@ async def start_add_training_schedule(update: Update, context: ContextTypes.DEFA
         await deny_access(update)
         return
 
-    context.user_data["awaiting_training_schedule_add"] = True
+    context.user_data["awaiting_training_schedule_add"] = False
     context.user_data["awaiting_training_schedule_delete"] = False
+    context.user_data["awaiting_training_schedule_manual_date"] = False
+    context.user_data.pop("transfer_training_schedule_id", None)
+
+    today = date.today()
+    keyboard = build_month_dates_keyboard(today.year, today.month, "training_add_date")
 
     await update.message.reply_text(
-        "Отправь дату и время новой тренировки в формате:\n\n"
-        "ДД.ММ.ГГГГ ЧЧ:ММ\n\n"
-        "Например:\n"
-        "25.05.2026 21:00"
+        "Выбери дату новой тренировки:",
+        reply_markup=keyboard
     )
 
 
@@ -446,12 +491,25 @@ async def start_delete_training_schedule(update: Update, context: ContextTypes.D
         await deny_access(update)
         return
 
-    context.user_data["awaiting_training_schedule_delete"] = True
     context.user_data["awaiting_training_schedule_add"] = False
+    context.user_data["awaiting_training_schedule_delete"] = False
+    context.user_data["awaiting_training_schedule_manual_date"] = False
+    context.user_data.pop("transfer_training_schedule_id", None)
 
-    await update.message.reply_text(
-        "Отправь ID тренировки, которую нужно удалить из календаря."
-    )
+    schedule = get_upcoming_training_schedule()
+
+    if not schedule:
+        await update.message.reply_text("Нет тренировок для удаления.")
+        return
+
+    await update.message.reply_text("Выбери тренировку:")
+
+    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
+        text = format_training_schedule_row(training_date, training_time, comment)
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("Выбрать", callback_data=f"training_pick_{schedule_id}")]]
+        )
+        await update.message.reply_text(text, reply_markup=keyboard)
 
 
 async def handle_training_schedule_add_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -469,17 +527,47 @@ async def handle_training_schedule_add_input(update: Update, context: ContextTyp
         )
         return
 
-    schedule_id = add_training_schedule(
+    transfer_id = context.user_data.get("transfer_training_schedule_id")
+
+    if transfer_id:
+        old_row = get_training_schedule_by_id(transfer_id)
+
+        if not old_row:
+            context.user_data.pop("transfer_training_schedule_id", None)
+            context.user_data["awaiting_training_schedule_manual_date"] = False
+            await update.message.reply_text("Не удалось найти тренировку для переноса.")
+            return
+
+        _, old_date, old_time, old_comment, _, _ = old_row
+
+        deactivate_training_schedule(transfer_id)
+        add_training_schedule(
+            training_date=parsed_dt.date(),
+            training_time=parsed_dt.time(),
+            comment=old_comment,
+        )
+
+        context.user_data.pop("transfer_training_schedule_id", None)
+        context.user_data["awaiting_training_schedule_manual_date"] = False
+
+        await update.message.reply_text(
+            "📅 Тренировка перенесена.\n\n"
+            f"Было: {format_training_schedule_row(old_date, old_time, old_comment)}\n"
+            f"Стало: {format_training_schedule_row(parsed_dt.date(), parsed_dt.time(), old_comment)}"
+        )
+        return
+
+    add_training_schedule(
         training_date=parsed_dt.date(),
         training_time=parsed_dt.time(),
         comment=None,
     )
 
-    context.user_data["awaiting_training_schedule_add"] = False
+    context.user_data["awaiting_training_schedule_manual_date"] = False
 
     await update.message.reply_text(
-        f"✅ Тренировка добавлена в календарь.\n"
-        f"Дата: {parsed_dt.strftime('%d.%m.%Y %H:%M')}"
+        "✅ Тренировка добавлена.\n\n"
+        f"{format_training_schedule_row(parsed_dt.date(), parsed_dt.time())}"
     )
 
 
@@ -504,8 +592,8 @@ async def handle_training_schedule_delete_input(update: Update, context: Context
     _, training_date, training_time, comment, is_active, created_at = schedule_row
 
     await update.message.reply_text(
-        f"🗑 Тренировка удалена из календаря.\n"
-        f"Дата: {training_date.strftime('%d.%m.%Y')} {training_time.strftime('%H:%M')}"
+        "🗑 Тренировка удалена из календаря.\n\n"
+        f"{format_training_schedule_row(training_date, training_time, comment)}"
     )
 
 
@@ -643,6 +731,8 @@ async def back_to_coach_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     context.user_data["awaiting_training_schedule_add"] = False
     context.user_data["awaiting_training_schedule_delete"] = False
+    context.user_data["awaiting_training_schedule_manual_date"] = False
+    context.user_data.pop("transfer_training_schedule_id", None)
 
     await update.message.reply_text(
         "Возвращаю в главное меню тренера.",

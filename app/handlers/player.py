@@ -344,6 +344,8 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "Назад":
         context.user_data["awaiting_training_schedule_add"] = False
         context.user_data["awaiting_training_schedule_delete"] = False
+        context.user_data["awaiting_training_schedule_manual_date"] = False
+        context.user_data.pop("transfer_training_schedule_id", None)
 
         if is_coach(update.effective_user.id):
             await back_to_coach_menu(update, context)
@@ -354,6 +356,8 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "Календарь тренировок":
         context.user_data["awaiting_training_schedule_add"] = False
         context.user_data["awaiting_training_schedule_delete"] = False
+        context.user_data["awaiting_training_schedule_manual_date"] = False
+        context.user_data.pop("transfer_training_schedule_id", None)
 
         if not is_coach(update.effective_user.id):
             await deny_access(update)
@@ -364,6 +368,8 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "Показать календарь тренировок":
         context.user_data["awaiting_training_schedule_add"] = False
         context.user_data["awaiting_training_schedule_delete"] = False
+        context.user_data["awaiting_training_schedule_manual_date"] = False
+        context.user_data.pop("transfer_training_schedule_id", None)
 
         if not is_coach(update.effective_user.id):
             await deny_access(update)
@@ -373,6 +379,8 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "Добавить тренировку":
         context.user_data["awaiting_training_schedule_delete"] = False
+        context.user_data["awaiting_training_schedule_manual_date"] = False
+        context.user_data.pop("transfer_training_schedule_id", None)
 
         if not is_coach(update.effective_user.id):
             await deny_access(update)
@@ -382,11 +390,17 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "Удалить тренировку":
         context.user_data["awaiting_training_schedule_add"] = False
+        context.user_data["awaiting_training_schedule_manual_date"] = False
+        context.user_data.pop("transfer_training_schedule_id", None)
 
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
         await start_delete_training_schedule(update, context)
+        return
+
+    if is_coach(user.id) and context.user_data.get("awaiting_training_schedule_manual_date"):
+        await handle_training_schedule_add_input(update, context)
         return
 
     if is_coach(user.id) and context.user_data.get("awaiting_training_schedule_add"):
@@ -643,15 +657,4 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await deny_access(update)
             return
         await open_subscription_type_menu(update, context)
-        return
-
-    if text == "Назад":
-        context.user_data["awaiting_training_schedule_add"] = False
-        context.user_data["awaiting_training_schedule_delete"] = False
-
-        if is_coach(update.effective_user.id):
-            await back_to_coach_menu(update, context)
-            return
-
-        await back_to_player_menu(update, context)
         return

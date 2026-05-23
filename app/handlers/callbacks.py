@@ -1,4 +1,5 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+import calendar
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -13,6 +14,11 @@ from app.repositories.payments import (
     reject_claimed_payment,
     set_subscription_type,
 )
+from app.repositories.training_schedule import (
+    add_training_schedule,
+    deactivate_training_schedule,
+    get_training_schedule_by_id,
+)
 from app.repositories.users import add_or_update_user, delete_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
@@ -25,7 +31,11 @@ from app.services.trainings import (
 )
 
 
-def get_display_name(user_id: int, fallback_first_name: str | None = None, fallback_username: str | None = None) -> str:
+def get_display_name(
+    user_id: int,
+    fallback_first_name: str | None = None,
+    fallback_username: str | None = None,
+) -> str:
     existing_user = get_user_by_id(user_id)
 
     if existing_user:
@@ -43,6 +53,62 @@ def get_display_name(user_id: int, fallback_first_name: str | None = None, fallb
     if fallback_username:
         name += f" (@{fallback_username})"
     return name
+
+
+def get_weekday_name(dt: date) -> str:
+    weekdays = {
+        0: "Понедельник",
+        1: "Вторник",
+        2: "Среда",
+        3: "Четверг",
+        4: "Пятница",
+        5: "Суббота",
+        6: "Воскресенье",
+    }
+    return weekdays[dt.weekday()]
+
+
+def format_training_schedule_row(training_date, training_time, comment=None) -> str:
+    text = f"{get_weekday_name(training_date)} — {training_date.strftime('%d.%m.%Y')}, {training_time.strftime('%H:%M')}"
+    if comment:
+        text += f"\nКомментарий: {comment}"
+    return text
+
+
+def build_training_action_keyboard(schedule_id: int) -> InlineKeyboardMarkup:
+    keyboard = [
+        [
+            InlineKeyboardButton("🗑 Удалить", callback_data=f"training_delete_{schedule_id}"),
+            InlineKeyboardButton("📅 Перенести", callback_data=f"training_transfer_{schedule_id}"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def build_month_dates_keyboard(year: int, month: int, prefix: str) -> InlineKeyboardMarkup:
+    _, last_day = calendar.monthrange(year, month)
+
+    rows = []
+    current_row = []
+
+    for day in range(1, last_day + 1):
+        dt = date(year, month, day)
+        current_row.append(
+            InlineKeyboardButton(
+                str(day),
+                callback_data=f"{prefix}_{dt.isoformat()}",
+            )
+        )
+
+        if len(current_row) == 4:
+            rows.append(current_row)
+            current_row = []
+
+    if current_row:
+        rows.append(current_row)
+
+    rows.append([InlineKeyboardButton("✍️ Выбрать дату", callback_data=f"{prefix}_manual")])
+    return InlineKeyboardMarkup(rows)
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -375,6 +441,152 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=f"Не удалось отправить сообщение игроку: {e}"
             )
 
+        return
+
+    if data.startswith("training_pick_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        schedule_id = int(data.split("_")[-1])
+        row = get_training_schedule_by_id(schedule_id)
+
+        if not row:
+            await query.edit_message_text("Тренировка не найдена.")
+            return
+
+        _, training_date, training_time, comment, is_active, created_at = row
+
+        await query.edit_message_text(
+            "Выбрана тренировка:\n\n"
+            f"{format_training_schedule_row(training_date, training_time, comment)}",
+            reply_markup=build_training_action_keyboard(schedule_id)
+        )
+        return
+
+    if data.startswith("training_delete_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        schedule_id = int(data.split("_")[-1])
+        row = get_training_schedule_by_id(schedule_id)
+
+        if not row:
+            await query.edit_message_text("Тренировка не найдена.")
+            return
+
+        _, training_date, training_time, comment, is_active, created_at = row
+        deactivate_training_schedule(schedule_id)
+
+        await query.edit_message_text(
+            "🗑 Тренировка удалена.\n\n"
+            f"{format_training_schedule_row(training_date, training_time, comment)}"
+        )
+        return
+
+    if data.startswith("training_transfer_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        schedule_id = int(data.split("_")[-1])
+        row = get_training_schedule_by_id(schedule_id)
+
+        if not row:
+            await query.edit_message_text("Тренировка не найдена.")
+            return
+
+        _, training_date, training_time, comment, is_active, created_at = row
+
+        context.user_data["transfer_training_schedule_id"] = schedule_id
+        context.user_data["awaiting_training_schedule_add"] = False
+        context.user_data["awaiting_training_schedule_delete"] = False
+        context.user_data["awaiting_training_schedule_manual_date"] = False
+
+        today = date.today()
+        keyboard = build_month_dates_keyboard(today.year, today.month, "training_transfer_date")
+
+        await query.edit_message_text(
+            "Выбрана тренировка для переноса:\n\n"
+            f"{format_training_schedule_row(training_date, training_time, comment)}\n\n"
+            "Выбери новую дату:",
+            reply_markup=keyboard
+        )
+        return
+
+    if data.startswith("training_transfer_date_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        suffix = data.replace("training_transfer_date_", "", 1)
+
+        if suffix == "manual":
+            context.user_data["awaiting_training_schedule_manual_date"] = True
+            await query.edit_message_text(
+                "Отправь новую дату и время в формате:\n\n"
+                "ДД.ММ.ГГГГ ЧЧ:ММ"
+            )
+            return
+
+        schedule_id = context.user_data.get("transfer_training_schedule_id")
+        old_row = get_training_schedule_by_id(schedule_id) if schedule_id else None
+
+        if not old_row:
+            await query.edit_message_text("Не удалось найти тренировку для переноса.")
+            return
+
+        _, old_date, old_time, old_comment, _, _ = old_row
+
+        new_date = datetime.strptime(suffix, "%Y-%m-%d").date()
+
+        deactivate_training_schedule(schedule_id)
+        add_training_schedule(
+            training_date=new_date,
+            training_time=old_time,
+            comment=old_comment,
+        )
+
+        context.user_data.pop("transfer_training_schedule_id", None)
+        context.user_data["awaiting_training_schedule_manual_date"] = False
+
+        await query.edit_message_text(
+            "📅 Тренировка перенесена.\n\n"
+            f"Было: {format_training_schedule_row(old_date, old_time, old_comment)}\n"
+            f"Стало: {format_training_schedule_row(new_date, old_time, old_comment)}"
+        )
+        return
+
+    if data.startswith("training_add_date_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        suffix = data.replace("training_add_date_", "", 1)
+
+        if suffix == "manual":
+            context.user_data["awaiting_training_schedule_manual_date"] = True
+            context.user_data.pop("transfer_training_schedule_id", None)
+            await query.edit_message_text(
+                "Отправь дату и время новой тренировки в формате:\n\n"
+                "ДД.ММ.ГГГГ ЧЧ:ММ"
+            )
+            return
+
+        selected_date = datetime.strptime(suffix, "%Y-%m-%d").date()
+        training_time = datetime.strptime("21:00", "%H:%M").time()
+
+        add_training_schedule(
+            training_date=selected_date,
+            training_time=training_time,
+            comment=None,
+        )
+
+        await query.edit_message_text(
+            "✅ Тренировка добавлена.\n\n"
+            f"{format_training_schedule_row(selected_date, training_time)}"
+        )
         return
 
     if data.startswith("reject_"):
