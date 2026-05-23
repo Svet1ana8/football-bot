@@ -493,28 +493,6 @@ async def show_games_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(title, reply_markup=reply_markup)
 
 
-async def start_delete_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_coach(update.effective_user.id):
-        await deny_access(update)
-        return
-
-    context.user_data["awaiting_game_details"] = False
-    context.user_data.pop("selected_game_date", None)
-
-    schedule = get_upcoming_game_schedule()
-
-    if not schedule:
-        await update.message.reply_text("Запланированных игр пока нет.")
-        return
-
-    await update.message.reply_text("Выбери матч для удаления:")
-
-    month_keyboards = build_existing_games_keyboard(schedule, "game_delete_direct")
-
-    for title, reply_markup in month_keyboards:
-        await update.message.reply_text(title, reply_markup=reply_markup)
-
-
 async def start_add_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):
         await deny_access(update)
@@ -543,7 +521,7 @@ async def start_delete_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule = get_upcoming_game_schedule()
 
     if not schedule:
-        await update.message.reply_text("Нет матчей для удаления.")
+        await update.message.reply_text("Запланированных игр пока нет.")
         return
 
     await update.message.reply_text("Выбери матч для удаления:")
