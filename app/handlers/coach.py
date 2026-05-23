@@ -454,6 +454,61 @@ async def start_delete_training_schedule(update: Update, context: ContextTypes.D
     )
 
 
+async def handle_training_schedule_add_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = update.message.text.strip()
+
+    try:
+        parsed_dt = datetime.strptime(raw_text, "%d.%m.%Y %H:%M")
+    except ValueError:
+        await update.message.reply_text(
+            "Неверный формат.\n\n"
+            "Используй:\n"
+            "ДД.ММ.ГГГГ ЧЧ:ММ\n\n"
+            "Например:\n"
+            "25.05.2026 21:00"
+        )
+        return
+
+    schedule_id = add_training_schedule(
+        training_date=parsed_dt.date(),
+        training_time=parsed_dt.time(),
+        comment=None,
+    )
+
+    context.user_data["awaiting_training_schedule_add"] = False
+
+    await update.message.reply_text(
+        f"✅ Тренировка добавлена в календарь.\n"
+        f"Дата: {parsed_dt.strftime('%d.%m.%Y %H:%M')}"
+    )
+
+
+async def handle_training_schedule_delete_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = update.message.text.strip()
+
+    try:
+        schedule_id = int(raw_text)
+    except ValueError:
+        await update.message.reply_text("ID должен быть числом.")
+        return
+
+    schedule_row = get_training_schedule_by_id(schedule_id)
+
+    if not schedule_row:
+        await update.message.reply_text("Тренировка с таким ID не найдена.")
+        return
+
+    deactivate_training_schedule(schedule_id)
+    context.user_data["awaiting_training_schedule_delete"] = False
+
+    _, training_date, training_time, comment, is_active, created_at = schedule_row
+
+    await update.message.reply_text(
+        f"🗑 Тренировка удалена из календаря.\n"
+        f"Дата: {training_date.strftime('%d.%m.%Y')} {training_time.strftime('%H:%M')}"
+    )
+
+
 async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):
         await deny_access(update)
