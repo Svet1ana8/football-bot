@@ -1,3 +1,5 @@
+from datetime import date
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
@@ -32,6 +34,23 @@ from app.repositories.payments import get_subscription_by_user_id
 from app.repositories.users import add_or_update_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
+
+
+def get_days_until_next_payment(payment_day: int) -> int:
+    today = date.today()
+
+    if today.day <= payment_day:
+        return payment_day - today.day
+
+    next_month = today.month + 1
+    next_year = today.year
+
+    if next_month == 13:
+        next_month = 1
+        next_year += 1
+
+    next_payment_date = date(next_year, next_month, payment_day)
+    return (next_payment_date - today).days
 
 
 async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,18 +137,13 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         payment_claimed,
     ) = subscription
 
-    paid_text = "Да" if is_paid_current_period else "Нет"
-
-    days_left_text = "Не указано"
-    if subscription_end_date:
-        from datetime import date
-        days_left = (subscription_end_date - date.today()).days
-        days_left_text = str(days_left if days_left >= 0 else 0)
+    paid_text = "да" if is_paid_current_period else "нет"
+    days_left = get_days_until_next_payment(payment_day)
 
     await update.message.reply_text(
         "💳 Статус оплаты\n\n"
         f"Оплачено: {paid_text}\n"
-        f"Осталось дней: {days_left_text}"
+        f"Осталось дней: {days_left}"
     )
 
 
