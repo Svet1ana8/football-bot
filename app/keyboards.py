@@ -77,7 +77,7 @@ def get_coach_menu():
         ["Новые заявки", "Одобренные игроки"],
         ["Напомнить об оплате", "Напомнить о тренировке"],
         ["Ответы на голосование", "Статус напоминания"],
-        ["Посещаемость"],
+        ["Посещаемость", "Календарь тренировок"],
         ["Оплаты"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -91,6 +91,16 @@ def get_payments_menu():
         ["Отметить оплату"],
         ["Все абонементы"],
         ["История оплат"],
+        ["Назад"],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_training_schedule_menu():
+    keyboard = [
+        ["Показать календарь тренировок"],
+        ["Добавить тренировку"],
+        ["Удалить тренировку"],
         ["Назад"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)

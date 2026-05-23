@@ -5,7 +5,12 @@ from telegram.ext import ContextTypes
 
 from app.config import TIMEZONE, TRAINING_VOTE_CLOSE_TIME, TRAINING_REMINDER_REPEAT_MINUTES
 from app.handlers.common import deny_access
-from app.keyboards import get_approved_player_menu, get_coach_menu, get_payments_menu
+from app.keyboards import (
+    get_approved_player_menu,
+    get_coach_menu,
+    get_payments_menu,
+    get_training_schedule_menu,
+)
 from app.repositories.payments import (
     get_all_payment_history,
     get_all_subscriptions,
@@ -13,6 +18,12 @@ from app.repositories.payments import (
     get_unpaid_subscriptions,
     get_unpaid_subscriptions_with_users,
     set_subscription_type,
+)
+from app.repositories.training_schedule import (
+    add_training_schedule,
+    deactivate_training_schedule,
+    get_training_schedule_by_id,
+    get_upcoming_training_schedule,
 )
 from app.repositories.trainings import get_month_attendance_stats
 from app.repositories.users import (
@@ -339,6 +350,142 @@ async def show_subscription_type_players(update: Update, context: ContextTypes.D
         await update.message.reply_text(text, reply_markup=reply_markup)
 
 
+async def open_training_schedule_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    await update.message.reply_text(
+        "Календарь тренировок. Выбери действие:",
+        reply_markup=get_training_schedule_menu()
+    )
+
+
+async def show_training_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    schedule = get_upcoming_training_schedule()
+
+    if not schedule:
+        await update.message.reply_text("📅 Календарь тренировок пока пуст.")
+        return
+
+    weekdays = {
+        0: "Понедельник",
+        1: "Вторник",
+        2: "Среда",
+        3: "Четверг",
+        4: "Пятница",
+        5: "Суббота",
+        6: "Воскресенье",
+    }
+
+    text = "📅 Календарь тренировок\n\n"
+
+    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
+        weekday_name = weekdays[training_date.weekday()]
+        date_text = training_date.strftime("%d.%m.%Y")
+        time_text = training_time.strftime("%H:%M")
+
+        text += f"ID: {schedule_id}\n"
+        text += f"{weekday_name} — {date_text}, {time_text}"
+
+        if comment:
+            text += f"\nКомментарий: {comment}"
+
+        text += "\n\n"
+
+    await update.message.reply_text(text)
+
+
+async def start_add_training_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    context.user_data["awaiting_training_schedule_add"] = True
+    context.user_data.pop("awaiting_training_schedule_delete", None)
+
+    await update.message.reply_text(
+        "Отправь дату и время новой тренировки в формате:\n\n"
+        "ДД.ММ.ГГГГ ЧЧ:ММ\n\n"
+        "Например:\n"
+        "25.05.2026 21:00"
+    )
+
+
+async def start_delete_training_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    context.user_data["awaiting_training_schedule_delete"] = True
+    context.user_data.pop("awaiting_training_schedule_add", None)
+
+    await update.message.reply_text(
+        "Отправь ID тренировки, которую нужно удалить из календаря."
+    )
+
+
+async def handle_training_schedule_add_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = update.message.text.strip()
+
+    try:
+        parsed_dt = datetime.strptime(raw_text, "%d.%m.%Y %H:%M")
+    except ValueError:
+        await update.message.reply_text(
+            "Неверный формат.\n\n"
+            "Используй:\n"
+            "ДД.ММ.ГГГГ ЧЧ:ММ\n\n"
+            "Например:\n"
+            "25.05.2026 21:00"
+        )
+        return
+
+    schedule_id = add_training_schedule(
+        training_date=parsed_dt.date(),
+        training_time=parsed_dt.time(),
+        comment=None,
+    )
+
+    context.user_data["awaiting_training_schedule_add"] = False
+
+    await update.message.reply_text(
+        f"✅ Тренировка добавлена в календарь.\n"
+        f"ID: {schedule_id}\n"
+        f"Дата: {parsed_dt.strftime('%d.%m.%Y %H:%M')}"
+    )
+
+
+async def handle_training_schedule_delete_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = update.message.text.strip()
+
+    try:
+        schedule_id = int(raw_text)
+    except ValueError:
+        await update.message.reply_text("ID должен быть числом.")
+        return
+
+    schedule_row = get_training_schedule_by_id(schedule_id)
+
+    if not schedule_row:
+        await update.message.reply_text("Тренировка с таким ID не найдена.")
+        return
+
+    deactivate_training_schedule(schedule_id)
+    context.user_data["awaiting_training_schedule_delete"] = False
+
+    _, training_date, training_time, comment, is_active, created_at = schedule_row
+
+    await update.message.reply_text(
+        f"🗑 Тренировка удалена из календаря.\n"
+        f"ID: {schedule_id}\n"
+        f"Дата: {training_date.strftime('%d.%m.%Y')} {training_time.strftime('%H:%M')}"
+    )
+
+
 async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):
         await deny_access(update)
@@ -470,6 +617,9 @@ async def back_to_coach_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not is_coach(update.effective_user.id):
         await deny_access(update)
         return
+
+    context.user_data["awaiting_training_schedule_add"] = False
+    context.user_data["awaiting_training_schedule_delete"] = False
 
     await update.message.reply_text(
         "Возвращаю в главное меню тренера.",

@@ -33,6 +33,17 @@ def init_db():
             """)
 
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS training_schedule (
+                    id SERIAL PRIMARY KEY,
+                    training_date DATE NOT NULL,
+                    training_time TIME NOT NULL,
+                    comment TEXT,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+
+            cur.execute("""
                 DROP TABLE IF EXISTS training_responses
             """)
 

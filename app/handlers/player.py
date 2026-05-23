@@ -8,18 +8,24 @@ from app.handlers.coach import (
     approved,
     back_to_coach_menu,
     coach,
+    handle_training_schedule_add_input,
+    handle_training_schedule_delete_input,
     open_mark_payment,
     open_payments_menu,
     open_subscription_type_menu,
+    open_training_schedule_menu,
     send_payment_reminder_by_month,
     send_training_reminder,
     show_all_subscriptions,
     show_ending_soon,
     show_payment_history,
+    show_training_calendar,
     show_training_responses,
     show_training_status,
     show_unpaid_players,
     show_month_attendance,
+    start_add_training_schedule,
+    start_delete_training_schedule,
 )
 from app.keyboards import (
     get_approved_player_menu,
@@ -31,6 +37,7 @@ from app.keyboards import (
     get_video_menu,
 )
 from app.repositories.payments import get_subscription_by_user_id
+from app.repositories.training_schedule import get_upcoming_training_schedule
 from app.repositories.users import add_or_update_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
@@ -148,7 +155,37 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📅 График тренировок скоро будет добавлен в виде календаря.")
+    schedule = get_upcoming_training_schedule()
+
+    if not schedule:
+        await update.message.reply_text("📅 График тренировок пока пуст.")
+        return
+
+    text = "📅 График тренировок\n\n"
+
+    weekdays = {
+        0: "Понедельник",
+        1: "Вторник",
+        2: "Среда",
+        3: "Четверг",
+        4: "Пятница",
+        5: "Суббота",
+        6: "Воскресенье",
+    }
+
+    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
+        weekday_name = weekdays[training_date.weekday()]
+        date_text = training_date.strftime("%d.%m.%Y")
+        time_text = training_time.strftime("%H:%M")
+
+        text += f"{weekday_name} — {date_text}, {time_text}"
+
+        if comment:
+            text += f"\nКомментарий: {comment}"
+
+        text += "\n\n"
+
+    await update.message.reply_text(text)
 
 
 async def open_playbook_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -280,6 +317,14 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user = update.effective_user
     existing_user = get_user_by_id(user.id)
+
+    if is_coach(user.id) and context.user_data.get("awaiting_training_schedule_add"):
+        await handle_training_schedule_add_input(update, context)
+        return
+
+    if is_coach(user.id) and context.user_data.get("awaiting_training_schedule_delete"):
+        await handle_training_schedule_delete_input(update, context)
+        return
 
     if existing_user and existing_user[3] == "awaiting_name":
         full_name = text
@@ -478,6 +523,34 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await deny_access(update)
             return
         await show_month_attendance(update, context)
+        return
+
+    if text == "Календарь тренировок":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await open_training_schedule_menu(update, context)
+        return
+
+    if text == "Показать календарь тренировок":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await show_training_calendar(update, context)
+        return
+
+    if text == "Добавить тренировку":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await start_add_training_schedule(update, context)
+        return
+
+    if text == "Удалить тренировку":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await start_delete_training_schedule(update, context)
         return
 
     if text == "Оплаты":
