@@ -101,6 +101,90 @@ def build_month_dates_keyboard(year: int, month: int, prefix: str) -> InlineKeyb
     return InlineKeyboardMarkup(rows)
 
 
+def build_existing_trainings_keyboard(schedule, callback_prefix: str) -> list[tuple[str, InlineKeyboardMarkup]]:
+    months = {
+        1: "Январь",
+        2: "Февраль",
+        3: "Март",
+        4: "Апрель",
+        5: "Май",
+        6: "Июнь",
+        7: "Июль",
+        8: "Август",
+        9: "Сентябрь",
+        10: "Октябрь",
+        11: "Ноябрь",
+        12: "Декабрь",
+    }
+
+    grouped = {}
+    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
+        key = (training_date.year, training_date.month)
+        grouped.setdefault(key, []).append((schedule_id, training_date, training_time, comment))
+
+    result = []
+
+    for (year, month), items in grouped.items():
+        rows = []
+        current_row = []
+
+        for schedule_id, training_date, training_time, comment in items:
+            current_row.append(
+                InlineKeyboardButton(
+                    str(training_date.day),
+                    callback_data=f"{callback_prefix}_{schedule_id}",
+                )
+            )
+
+            if len(current_row) == 4:
+                rows.append(current_row)
+                current_row = []
+
+        if current_row:
+            rows.append(current_row)
+
+        title = f"{months[month]} {year}"
+        result.append((title, InlineKeyboardMarkup(rows)))
+
+    return result
+
+
+def build_existing_trainings_text(schedule) -> str:
+    if not schedule:
+        return "📅 Тренировок пока нет."
+
+    months = {
+        1: "Январь",
+        2: "Февраль",
+        3: "Март",
+        4: "Апрель",
+        5: "Май",
+        6: "Июнь",
+        7: "Июль",
+        8: "Август",
+        9: "Сентябрь",
+        10: "Октябрь",
+        11: "Ноябрь",
+        12: "Декабрь",
+    }
+
+    grouped = {}
+    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
+        key = (training_date.year, training_date.month)
+        grouped.setdefault(key, []).append((training_date, training_time, comment))
+
+    parts = ["📅 Календарь тренировок\n"]
+
+    for (year, month), items in grouped.items():
+        parts.append(f"\n{months[month]} {year}\n")
+
+        for training_date, training_time, comment in items:
+            parts.append(format_training_schedule_row(training_date, training_time, comment))
+            parts.append("")
+
+    return "\n".join(parts).strip()
+
+
 async def test_subscription_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):
         await deny_access(update)
@@ -434,37 +518,12 @@ async def show_training_calendar(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("📅 Календарь тренировок пока пуст.")
         return
 
-    months = {
-        1: "Январь",
-        2: "Февраль",
-        3: "Март",
-        4: "Апрель",
-        5: "Май",
-        6: "Июнь",
-        7: "Июль",
-        8: "Август",
-        9: "Сентябрь",
-        10: "Октябрь",
-        11: "Ноябрь",
-        12: "Декабрь",
-    }
+    await update.message.reply_text(build_existing_trainings_text(schedule))
 
-    grouped = {}
-    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
-        key = (training_date.year, training_date.month)
-        grouped.setdefault(key, []).append((training_date, training_time, comment))
+    month_keyboards = build_existing_trainings_keyboard(schedule, "training_view")
 
-    parts = ["📅 Календарь тренировок\n"]
-
-    for (year, month), items in grouped.items():
-        parts.append(f"\n{months[month]} {year}\n")
-
-        for training_date, training_time, comment in items:
-            line = format_training_schedule_row(training_date, training_time, comment)
-            parts.append(line)
-            parts.append("")
-
-    await update.message.reply_text("\n".join(parts).strip())
+    for title, reply_markup in month_keyboards:
+        await update.message.reply_text(title, reply_markup=reply_markup)
 
 
 async def start_add_training_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -502,14 +561,12 @@ async def start_delete_training_schedule(update: Update, context: ContextTypes.D
         await update.message.reply_text("Нет тренировок для удаления.")
         return
 
-    await update.message.reply_text("Выбери тренировку:")
+    await update.message.reply_text("Выбери тренировку для удаления:")
 
-    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
-        text = format_training_schedule_row(training_date, training_time, comment)
-        keyboard = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("Выбрать", callback_data=f"training_pick_{schedule_id}")]]
-        )
-        await update.message.reply_text(text, reply_markup=keyboard)
+    month_keyboards = build_existing_trainings_keyboard(schedule, "training_delete_direct")
+
+    for title, reply_markup in month_keyboards:
+        await update.message.reply_text(title, reply_markup=reply_markup)
 
 
 async def handle_training_schedule_add_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
