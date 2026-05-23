@@ -4,22 +4,27 @@ from app.config import DEFAULT_PAYMENT_DAY
 from app.db import get_connection
 
 
-def create_subscription_for_user(user_id: int, payment_day: int = DEFAULT_PAYMENT_DAY):
+def create_subscription_for_user(
+    user_id: int,
+    payment_day: int = DEFAULT_PAYMENT_DAY,
+    subscription_type: str = "monthly"
+):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO player_subscriptions (
                     user_id,
                     payment_day,
+                    subscription_type,
                     subscription_end_date,
                     last_payment_date,
                     is_paid_current_period,
                     has_custom_schedule,
                     payment_claimed
                 )
-                VALUES (%s, %s, NULL, NULL, FALSE, FALSE, FALSE)
+                VALUES (%s, %s, %s, NULL, NULL, FALSE, FALSE, FALSE)
                 ON CONFLICT (user_id) DO NOTHING
-            """, (user_id, payment_day))
+            """, (user_id, payment_day, subscription_type))
         conn.commit()
 
 
@@ -30,6 +35,7 @@ def get_subscription_by_user_id(user_id: int):
                 SELECT
                     user_id,
                     payment_day,
+                    subscription_type,
                     subscription_end_date,
                     last_payment_date,
                     is_paid_current_period,
@@ -48,6 +54,7 @@ def get_all_subscriptions():
                 SELECT
                     user_id,
                     payment_day,
+                    subscription_type,
                     subscription_end_date,
                     last_payment_date,
                     is_paid_current_period,
@@ -89,6 +96,17 @@ def set_payment_day(user_id: int, payment_day: int):
         conn.commit()
 
 
+def set_subscription_type(user_id: int, subscription_type: str):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE player_subscriptions
+                SET subscription_type = %s
+                WHERE user_id = %s
+            """, (subscription_type, user_id))
+        conn.commit()
+
+
 def mark_paid_current_period(user_id: int, is_paid: bool):
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -109,6 +127,7 @@ def get_subscriptions_ending_soon(today: date, days: int = 5):
                 SELECT
                     user_id,
                     payment_day,
+                    subscription_type,
                     subscription_end_date,
                     last_payment_date,
                     is_paid_current_period,
@@ -130,6 +149,7 @@ def get_unpaid_subscriptions(today: date):
                 SELECT
                     user_id,
                     payment_day,
+                    subscription_type,
                     subscription_end_date,
                     last_payment_date,
                     is_paid_current_period,
@@ -166,6 +186,7 @@ def get_unpaid_subscriptions_with_users(today: date):
                     u.username,
                     u.first_name,
                     ps.payment_day,
+                    ps.subscription_type,
                     ps.subscription_end_date,
                     ps.last_payment_date,
                     ps.is_paid_current_period,
@@ -192,6 +213,7 @@ def get_subscriptions_ending_soon_with_users(today: date, days: int = 5):
                     u.username,
                     u.first_name,
                     ps.payment_day,
+                    ps.subscription_type,
                     ps.subscription_end_date,
                     ps.last_payment_date,
                     ps.is_paid_current_period,

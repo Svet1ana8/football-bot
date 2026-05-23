@@ -1,11 +1,9 @@
 from datetime import datetime, date, time
 
-from app.config import TIMEZONE, TRAINING_VOTE_CLOSE_TIME, TRAINING_REMINDER_REPEAT_MINUTES
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
-from app.repositories.trainings import get_month_attendance_stats
 
+from app.config import TIMEZONE, TRAINING_VOTE_CLOSE_TIME, TRAINING_REMINDER_REPEAT_MINUTES
 from app.handlers.common import deny_access
 from app.keyboards import get_approved_player_menu, get_coach_menu, get_payments_menu
 from app.repositories.payments import (
@@ -14,7 +12,9 @@ from app.repositories.payments import (
     get_subscriptions_ending_soon,
     get_unpaid_subscriptions,
     get_unpaid_subscriptions_with_users,
+    set_subscription_type,
 )
+from app.repositories.trainings import get_month_attendance_stats
 from app.repositories.users import (
     add_or_update_user,
     get_user_by_id,
@@ -290,6 +290,55 @@ async def open_payments_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 
+async def open_subscription_type_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    await update.message.reply_text("Выбери игрока, чтобы изменить тип абонемента:")
+    await show_subscription_type_players(update, context)
+
+
+async def show_subscription_type_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    subscriptions = get_all_subscriptions()
+
+    if not subscriptions:
+        await update.message.reply_text("Игроков с абонементами пока нет.")
+        return
+
+    players_map = {
+        user_id: (username, first_name)
+        for user_id, username, first_name in get_users_by_status("approved")
+    }
+
+    for user_id, payment_day, subscription_type, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
+        username, first_name = players_map.get(user_id, (None, None))
+
+        name = first_name or str(user_id)
+        if username:
+            name += f" (@{username})"
+
+        subscription_type_text = "месячный" if subscription_type == "monthly" else "игровой"
+
+        text = (
+            f"👤 Игрок: {name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"🎫 Тип абонемента: {subscription_type_text}"
+        )
+
+        keyboard = [[
+            InlineKeyboardButton("Месячный", callback_data=f"set_subscription_type_monthly_{user_id}"),
+            InlineKeyboardButton("Игровой", callback_data=f"set_subscription_type_game_{user_id}")
+        ]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(text, reply_markup=reply_markup)
+
+
 async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):
         await deny_access(update)
@@ -309,7 +358,7 @@ async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "У кого скоро заканчивается абонемент:\n\n"
 
-    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
+    for user_id, payment_day, subscription_type, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
         username, first_name = players_map.get(user_id, (None, None))
 
         name = first_name or str(user_id)
@@ -317,11 +366,13 @@ async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
             name += f" (@{username})"
 
         days_left = (subscription_end_date - today).days
+        subscription_type_text = "месячный" if subscription_type == "monthly" else "игровой"
 
         text += (
             f"⏰ Скоро срок оплаты\n"
             f"👤 Игрок: {name}\n"
             f"🆔 ID: {user_id}\n"
+            f"🎫 Абонемент: {subscription_type_text}\n"
             f"💳 Абонемент до: {subscription_end_date.strftime('%d.%m.%Y')}\n"
             f"📅 Осталось дней: {days_left}\n"
             f"📌 Последняя оплата: {last_payment_date.strftime('%d.%m.%Y') if last_payment_date else 'Не указана'}\n\n"
@@ -349,7 +400,7 @@ async def show_unpaid_players(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     text = "Кто не оплатил:\n\n"
 
-    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
+    for user_id, payment_day, subscription_type, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
         username, first_name = players_map.get(user_id, (None, None))
 
         name = first_name or str(user_id)
@@ -358,11 +409,13 @@ async def show_unpaid_players(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         end_date_text = subscription_end_date.strftime('%d.%m.%Y') if subscription_end_date else "Не указана"
         last_payment_text = last_payment_date.strftime('%d.%m.%Y') if last_payment_date else "Не указана"
+        subscription_type_text = "месячный" if subscription_type == "monthly" else "игровой"
 
         text += (
             f"⚠️ Игрок не оплатил\n"
             f"👤 Игрок: {name}\n"
             f"🆔 ID: {user_id}\n"
+            f"🎫 Абонемент: {subscription_type_text}\n"
             f"📅 Плановая дата оплаты: {payment_day}\n"
             f"💳 Абонемент до: {end_date_text}\n"
             f"📌 Последняя оплата: {last_payment_text}\n"
@@ -384,7 +437,7 @@ async def open_mark_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Нет игроков для отметки оплаты.")
         return
 
-    for user_id, username, first_name, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
+    for user_id, username, first_name, payment_day, subscription_type, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
         name = first_name or str(user_id)
         if username:
             name += f" (@{username})"
@@ -392,11 +445,13 @@ async def open_mark_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
         end_date_text = subscription_end_date.strftime('%d.%m.%Y') if subscription_end_date else "Не указана"
         last_payment_text = last_payment_date.strftime('%d.%m.%Y') if last_payment_date else "Не указана"
         claimed_text = "Да" if payment_claimed else "Нет"
+        subscription_type_text = "месячный" if subscription_type == "monthly" else "игровой"
 
         text = (
             f"💰 Подтверждение оплаты\n"
             f"👤 Игрок: {name}\n"
             f"🆔 ID: {user_id}\n"
+            f"🎫 Абонемент: {subscription_type_text}\n"
             f"📅 Плановая дата оплаты: {payment_day}\n"
             f"💳 Абонемент до: {end_date_text}\n"
             f"📌 Последняя оплата: {last_payment_text}\n"
@@ -440,7 +495,7 @@ async def show_all_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
 
     text = "Все абонементы:\n\n"
 
-    for user_id, payment_day, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
+    for user_id, payment_day, subscription_type, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
         username, first_name = players_map.get(user_id, (None, None))
 
         name = first_name or str(user_id)
@@ -451,10 +506,12 @@ async def show_all_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
         last_payment_text = last_payment_date.strftime('%d.%m.%Y') if last_payment_date else "Не указана"
         paid_text = "Да" if is_paid_current_period else "Нет"
         claimed_text = "Да" if payment_claimed else "Нет"
+        subscription_type_text = "месячный" if subscription_type == "monthly" else "игровой"
 
         text += (
             f"👤 Игрок: {name}\n"
             f"🆔 ID: {user_id}\n"
+            f"🎫 Абонемент: {subscription_type_text}\n"
             f"💳 Абонемент до: {end_date_text}\n"
             f"📅 Плановая дата оплаты: {payment_day}\n"
             f"📌 Последняя оплата: {last_payment_text}\n"
@@ -520,6 +577,7 @@ async def show_payment_history(update: Update, context: ContextTypes.DEFAULT_TYP
         text += "\n"
 
     await update.message.reply_text(text)
+
 
 async def show_month_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):

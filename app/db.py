@@ -51,6 +51,7 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS player_subscriptions (
                     user_id BIGINT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
                     payment_day INTEGER NOT NULL DEFAULT {DEFAULT_PAYMENT_DAY},
+                    subscription_type TEXT NOT NULL DEFAULT 'monthly',
                     subscription_end_date DATE,
                     last_payment_date DATE,
                     is_paid_current_period BOOLEAN NOT NULL DEFAULT FALSE,
@@ -62,6 +63,11 @@ def init_db():
             cur.execute("""
                 ALTER TABLE player_subscriptions
                 ADD COLUMN IF NOT EXISTS payment_claimed BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+
+            cur.execute("""
+                ALTER TABLE player_subscriptions
+                ADD COLUMN IF NOT EXISTS subscription_type TEXT NOT NULL DEFAULT 'monthly'
             """)
 
             cur.execute(f"""

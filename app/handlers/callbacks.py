@@ -11,6 +11,7 @@ from app.repositories.payments import (
     create_subscription_for_user,
     mark_payment_claimed,
     reject_claimed_payment,
+    set_subscription_type,
 )
 from app.repositories.users import add_or_update_user, delete_user, get_user_by_id
 from app.services.access import is_coach
@@ -246,6 +247,56 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         else:
             await query.edit_message_text("Игрок уже удалён или не найден.")
+
+        return
+
+    if data.startswith("set_subscription_type_monthly_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        target_user_id = int(data.split("_")[-1])
+        target_user = get_user_by_id(target_user_id)
+        player_name = target_user[2] if target_user and target_user[2] else str(target_user_id)
+
+        set_subscription_type(target_user_id, "monthly")
+
+        await query.edit_message_text(
+            f"✅ Игроку {player_name} установлен тип абонемента: месячный."
+        )
+
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text="Тренер обновил твой тип абонемента: месячный."
+            )
+        except Exception:
+            pass
+
+        return
+
+    if data.startswith("set_subscription_type_game_"):
+        if not is_coach(query.from_user.id):
+            await query.edit_message_text("У тебя нет доступа к этому действию.")
+            return
+
+        target_user_id = int(data.split("_")[-1])
+        target_user = get_user_by_id(target_user_id)
+        player_name = target_user[2] if target_user and target_user[2] else str(target_user_id)
+
+        set_subscription_type(target_user_id, "game")
+
+        await query.edit_message_text(
+            f"✅ Игроку {player_name} установлен тип абонемента: игровой."
+        )
+
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text="Тренер обновил твой тип абонемента: игровой."
+            )
+        except Exception:
+            pass
 
         return
 

@@ -8,6 +8,7 @@ from app.handlers.coach import (
     coach,
     open_mark_payment,
     open_payments_menu,
+    open_subscription_type_menu,
     send_payment_reminder_by_month,
     send_training_reminder,
     show_all_subscriptions,
@@ -80,7 +81,22 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text)
         return
 
-    text += "\nАбонемент: месячный"
+    (
+        user_id,
+        payment_day,
+        subscription_type,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) = subscription
+
+    subscription_type_text = "месячный"
+    if subscription_type == "game":
+        subscription_type_text = "игровой"
+
+    text += f"\nАбонемент: {subscription_type_text}"
     await update.message.reply_text(text)
 
 
@@ -94,6 +110,7 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
     (
         user_id,
         payment_day,
+        subscription_type,
         subscription_end_date,
         last_payment_date,
         is_paid_current_period,
@@ -489,6 +506,13 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await deny_access(update)
             return
         await show_payment_history(update, context)
+        return
+
+    if text == "Изменить тип абонемента":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await open_subscription_type_menu(update, context)
         return
 
     if text == "Назад":
