@@ -18,6 +18,7 @@ from app.repositories.training_schedule import (
     add_training_schedule,
     deactivate_training_schedule,
     get_training_schedule_by_id,
+    get_upcoming_training_schedule,
 )
 from app.repositories.users import add_or_update_user, delete_user, get_user_by_id
 from app.services.access import is_coach
@@ -111,6 +112,54 @@ def build_month_dates_keyboard(year: int, month: int, prefix: str) -> InlineKeyb
         rows.append([InlineKeyboardButton("✍️ Выбрать дату", callback_data=f"{prefix}_manual")])
 
     return InlineKeyboardMarkup(rows)
+
+
+def build_existing_trainings_keyboard(schedule, callback_prefix: str) -> list[tuple[str, InlineKeyboardMarkup]]:
+    months = {
+        1: "Январь",
+        2: "Февраль",
+        3: "Март",
+        4: "Апрель",
+        5: "Май",
+        6: "Июнь",
+        7: "Июль",
+        8: "Август",
+        9: "Сентябрь",
+        10: "Октябрь",
+        11: "Ноябрь",
+        12: "Декабрь",
+    }
+
+    grouped = {}
+    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
+        key = (training_date.year, training_date.month)
+        grouped.setdefault(key, []).append((schedule_id, training_date, training_time, comment))
+
+    result = []
+
+    for (year, month), items in grouped.items():
+        rows = []
+        current_row = []
+
+        for schedule_id, training_date, training_time, comment in items:
+            current_row.append(
+                InlineKeyboardButton(
+                    str(training_date.day),
+                    callback_data=f"{callback_prefix}_{schedule_id}",
+                )
+            )
+
+            if len(current_row) == 4:
+                rows.append(current_row)
+                current_row = []
+
+        if current_row:
+            rows.append(current_row)
+
+        title = f"{months[month]} {year}"
+        result.append((title, InlineKeyboardMarkup(rows)))
+
+    return result
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -486,6 +535,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🗑 Тренировка удалена.\n\n"
             f"{format_training_schedule_row(training_date, training_time, comment)}"
         )
+
+        remaining_schedule = get_upcoming_training_schedule()
+
+        if not remaining_schedule:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="Все тренировки удалены."
+            )
+            return
+
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text="Выбери следующую тренировку для удаления:"
+        )
+
+        month_keyboards = build_existing_trainings_keyboard(
+            remaining_schedule,
+            "training_delete_direct"
+        )
+
+        for title, reply_markup in month_keyboards:
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=title,
+                reply_markup=reply_markup
+            )
         return
 
     if data.startswith("training_delete_"):
