@@ -697,6 +697,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    if data.startswith("training_player_view_"):
+        schedule_id = int(data.split("_")[-1])
+        row = get_training_schedule_by_id(schedule_id)
+
+        if not row:
+            await query.answer("Тренировка не найдена", show_alert=True)
+            return
+
+        _, training_date, training_time, comment, is_active, created_at = row
+
+        await query.answer(
+            format_training_schedule_row(training_date, training_time, comment),
+            show_alert=True
+        )
+        return
+
     if data.startswith("reject_"):
         if not is_coach(query.from_user.id):
             await query.edit_message_text("У тебя нет доступа к этому действию.")

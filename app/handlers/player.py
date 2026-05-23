@@ -1,6 +1,6 @@
 from datetime import date
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from app.handlers.common import deny_access
@@ -58,6 +58,54 @@ def get_days_until_next_payment(payment_day: int) -> int:
 
     next_payment_date = date(next_year, next_month, payment_day)
     return (next_payment_date - today).days
+
+
+def build_player_trainings_keyboard(schedule) -> list[tuple[str, InlineKeyboardMarkup]]:
+    months = {
+        1: "Январь",
+        2: "Февраль",
+        3: "Март",
+        4: "Апрель",
+        5: "Май",
+        6: "Июнь",
+        7: "Июль",
+        8: "Август",
+        9: "Сентябрь",
+        10: "Октябрь",
+        11: "Ноябрь",
+        12: "Декабрь",
+    }
+
+    grouped = {}
+    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
+        key = (training_date.year, training_date.month)
+        grouped.setdefault(key, []).append((schedule_id, training_date, training_time, comment))
+
+    result = []
+
+    for (year, month), items in grouped.items():
+        rows = []
+        current_row = []
+
+        for schedule_id, training_date, training_time, comment in items:
+            current_row.append(
+                InlineKeyboardButton(
+                    str(training_date.day),
+                    callback_data=f"training_player_view_{schedule_id}",
+                )
+            )
+
+            if len(current_row) == 4:
+                rows.append(current_row)
+                current_row = []
+
+        if current_row:
+            rows.append(current_row)
+
+        title = f"{months[month]} {year}"
+        result.append((title, InlineKeyboardMarkup(rows)))
+
+    return result
 
 
 async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -161,54 +209,12 @@ async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("📅 График тренировок пока пуст.")
         return
 
-    weekdays = {
-        0: "Понедельник",
-        1: "Вторник",
-        2: "Среда",
-        3: "Четверг",
-        4: "Пятница",
-        5: "Суббота",
-        6: "Воскресенье",
-    }
+    await update.message.reply_text("📅 График тренировок")
 
-    months = {
-        1: "Январь",
-        2: "Февраль",
-        3: "Март",
-        4: "Апрель",
-        5: "Май",
-        6: "Июнь",
-        7: "Июль",
-        8: "Август",
-        9: "Сентябрь",
-        10: "Октябрь",
-        11: "Ноябрь",
-        12: "Декабрь",
-    }
+    month_keyboards = build_player_trainings_keyboard(schedule)
 
-    grouped = {}
-    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
-        key = (training_date.year, training_date.month)
-        grouped.setdefault(key, []).append((training_date, training_time, comment))
-
-    parts = ["📅 График тренировок\n"]
-
-    for (year, month), items in grouped.items():
-        parts.append(f"\n{months[month]} {year}\n")
-
-        for training_date, training_time, comment in items:
-            weekday_name = weekdays[training_date.weekday()]
-            date_text = training_date.strftime("%d.%m.%Y")
-            time_text = training_time.strftime("%H:%M")
-
-            line = f"{weekday_name} — {date_text}, {time_text}"
-            if comment:
-                line += f"\nКомментарий: {comment}"
-
-            parts.append(line)
-            parts.append("")
-
-    await update.message.reply_text("\n".join(parts).strip())
+    for title, reply_markup in month_keyboards:
+        await update.message.reply_text(title, reply_markup=reply_markup)
 
 
 async def open_playbook_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
