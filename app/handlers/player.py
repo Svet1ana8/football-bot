@@ -8,8 +8,10 @@ from app.handlers.coach import (
     approved,
     back_to_coach_menu,
     coach,
+    handle_game_details_input,
     handle_training_schedule_add_input,
     handle_training_schedule_delete_input,
+    open_games_schedule_menu,
     open_mark_payment,
     open_payments_menu,
     open_subscription_type_menu,
@@ -18,13 +20,16 @@ from app.handlers.coach import (
     send_training_reminder,
     show_all_subscriptions,
     show_ending_soon,
+    show_games_calendar,
     show_payment_history,
     show_training_calendar,
     show_training_responses,
     show_training_status,
     show_unpaid_players,
     show_month_attendance,
+    start_add_game,
     start_add_training_schedule,
+    start_delete_game,
     start_delete_training_schedule,
 )
 from app.keyboards import (
@@ -35,13 +40,6 @@ from app.keyboards import (
     get_playbook_menu,
     get_special_teams_video_menu,
     get_video_menu,
-)
-from app.handlers.coach import (
-    open_games_schedule_menu,
-    show_games_calendar,
-    start_add_game,
-    start_delete_game,
-    handle_game_details_input,
 )
 from app.repositories.game_schedule import get_upcoming_game_schedule
 from app.repositories.payments import get_subscription_by_user_id
@@ -115,6 +113,7 @@ def build_player_trainings_keyboard(schedule) -> list[tuple[str, InlineKeyboardM
 
     return result
 
+
 def build_player_games_keyboard(schedule) -> list[tuple[str, InlineKeyboardMarkup]]:
     months = {
         1: "Январь",
@@ -161,6 +160,7 @@ def build_player_games_keyboard(schedule) -> list[tuple[str, InlineKeyboardMarku
         result.append((title, InlineKeyboardMarkup(rows)))
 
     return result
+
 
 async def show_games_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule = get_upcoming_game_schedule()
@@ -301,10 +301,6 @@ async def show_defense_playbook(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text("📄 Документ по разделу «Защита» скоро будет добавлен.")
 
 
-async def show_games_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏆 График игр скоро будет добавлен в виде календаря.")
-
-
 async def open_documents_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "📚 Документация. Выбери документ:",
@@ -416,7 +412,25 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     existing_user = get_user_by_id(user.id)
 
+    if text == "Назад":
+        context.user_data["awaiting_training_schedule_add"] = False
+        context.user_data["awaiting_training_schedule_delete"] = False
+        context.user_data["awaiting_training_schedule_manual_date"] = False
+        context.user_data["awaiting_game_details"] = False
+        context.user_data.pop("transfer_training_schedule_id", None)
+        context.user_data.pop("selected_game_date", None)
+
+        if is_coach(update.effective_user.id):
+            await back_to_coach_menu(update, context)
+            return
+
+        await back_to_player_menu(update, context)
+        return
+
     if text == "Календарь игр":
+        context.user_data["awaiting_game_details"] = False
+        context.user_data.pop("selected_game_date", None)
+
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
@@ -424,6 +438,9 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "Показать календарь игр":
+        context.user_data["awaiting_game_details"] = False
+        context.user_data.pop("selected_game_date", None)
+
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
@@ -431,6 +448,9 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "Добавить матч":
+        context.user_data["awaiting_game_details"] = False
+        context.user_data.pop("selected_game_date", None)
+
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
@@ -438,26 +458,13 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "Удалить матч":
+        context.user_data["awaiting_game_details"] = False
+        context.user_data.pop("selected_game_date", None)
+
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
         await start_delete_game(update, context)
-        return
-
-    if is_coach(user.id) and context.user_data.get("awaiting_game_details"):
-        await handle_game_details_input(update, context)
-        return
-
-    if text == "Назад":
-        context.user_data["awaiting_training_schedule_add"] = False
-        context.user_data["awaiting_training_schedule_delete"] = False
-        context.user_data["awaiting_training_schedule_manual_date"] = False
-        context.user_data.pop("transfer_training_schedule_id", None)
-
-        if is_coach(update.effective_user.id):
-            await back_to_coach_menu(update, context)
-            return
-        await back_to_player_menu(update, context)
         return
 
     if text == "Календарь тренировок":
@@ -504,6 +511,10 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await deny_access(update)
             return
         await start_delete_training_schedule(update, context)
+        return
+
+    if is_coach(user.id) and context.user_data.get("awaiting_game_details"):
+        await handle_game_details_input(update, context)
         return
 
     if is_coach(user.id) and context.user_data.get("awaiting_training_schedule_manual_date"):
@@ -572,6 +583,10 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_training_schedule(update, context)
         return
 
+    if text == "График игр":
+        await show_games_schedule(update, context)
+        return
+
     if text == "Playbook":
         await open_playbook_menu(update, context)
         return
@@ -582,10 +597,6 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "Защита":
         await show_defense_playbook(update, context)
-        return
-
-    if text == "График игр":
-        await show_games_schedule(update, context)
         return
 
     if text == "Документация":

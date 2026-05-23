@@ -1,5 +1,6 @@
 from datetime import datetime, date, time
 import calendar
+import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -9,8 +10,15 @@ from app.handlers.common import deny_access
 from app.keyboards import (
     get_approved_player_menu,
     get_coach_menu,
+    get_games_schedule_menu,
     get_payments_menu,
     get_training_schedule_menu,
+)
+from app.repositories.game_schedule import (
+    add_game_schedule,
+    deactivate_game_schedule,
+    get_game_schedule_by_id,
+    get_upcoming_game_schedule,
 )
 from app.repositories.payments import (
     get_all_payment_history,
@@ -43,14 +51,6 @@ from app.services.trainings import (
     schedule_training_repeat_job,
     start_training_reminder,
 )
-from app.keyboards import get_games_schedule_menu
-from app.repositories.game_schedule import (
-    add_game_schedule,
-    deactivate_game_schedule,
-    get_game_schedule_by_id,
-    get_upcoming_game_schedule,
-)
-from app.repositories.users import get_users_by_status
 
 
 def get_weekday_name(dt: date) -> str:
@@ -73,13 +73,22 @@ def format_training_schedule_row(training_date, training_time, comment=None) -> 
     return text
 
 
+def format_game_schedule_row(game_date, game_time, opponent_name, comment=None) -> str:
+    text = (
+        f"{get_weekday_name(game_date)} — {game_date.strftime('%d.%m.%Y')}, "
+        f"{game_time.strftime('%H:%M')}\n"
+        f"Соперник: {opponent_name}"
+    )
+    if comment:
+        text += f"\nКомментарий: {comment}"
+    return text
+
+
 def build_training_action_keyboard(schedule_id: int) -> InlineKeyboardMarkup:
-    keyboard = [
-        [
-            InlineKeyboardButton("🗑 Удалить", callback_data=f"training_delete_{schedule_id}"),
-            InlineKeyboardButton("📅 Перенести", callback_data=f"training_transfer_{schedule_id}"),
-        ]
-    ]
+    keyboard = [[
+        InlineKeyboardButton("🗑 Удалить", callback_data=f"training_delete_{schedule_id}"),
+        InlineKeyboardButton("📅 Перенести", callback_data=f"training_transfer_{schedule_id}"),
+    ]]
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -154,12 +163,6 @@ def build_existing_trainings_keyboard(schedule, callback_prefix: str) -> list[tu
         result.append((title, InlineKeyboardMarkup(rows)))
 
     return result
-
-def format_game_schedule_row(game_date, game_time, opponent_name, comment=None) -> str:
-    text = f"{get_weekday_name(game_date)} — {game_date.strftime('%d.%m.%Y')}, {game_time.strftime('%H:%M')}\nСоперник: {opponent_name}"
-    if comment:
-        text += f"\nКомментарий: {comment}"
-    return text
 
 
 def build_existing_games_keyboard(schedule, callback_prefix: str) -> list[tuple[str, InlineKeyboardMarkup]]:
@@ -509,6 +512,9 @@ async def start_delete_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await deny_access(update)
         return
 
+    context.user_data["awaiting_game_details"] = False
+    context.user_data.pop("selected_game_date", None)
+
     schedule = get_upcoming_game_schedule()
 
     if not schedule:
@@ -531,25 +537,32 @@ async def handle_game_details_input(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text("Сначала выбери дату матча.")
         return
 
-    parts = raw_text.split(" | ")
-    if len(parts) != 2:
+    match = re.search(r"(\d{1,2})[:.](\d{2})$", raw_text)
+
+    if not match:
         await update.message.reply_text(
-            "Отправь данные в формате:\n\n"
-            "Команда | ЧЧ:ММ\n\n"
-            "Например:\n"
-            "Астана Барс | 19:00"
+            "Не смог понять время матча.\n\n"
+            "Напиши, например:\n"
+            "Астана Барс 19:00\n"
+            "Астана Барс - 19.00\n"
+            "Астана Барс: 19:00"
         )
         return
 
-    opponent_name = parts[0].strip()
-    time_text = parts[1].strip()
+    hour = int(match.group(1))
+    minute = int(match.group(2))
 
-    try:
-        game_time = datetime.strptime(time_text, "%H:%M").time()
-    except ValueError:
-        await update.message.reply_text("Время должно быть в формате ЧЧ:ММ")
+    if hour > 23 or minute > 59:
+        await update.message.reply_text("Время указано неверно. Используй формат вроде 19:00 или 20.00")
         return
 
+    opponent_name = raw_text[:match.start()].strip(" -:|,.")
+
+    if not opponent_name:
+        await update.message.reply_text("Не смог понять название команды. Напиши, например: Астана Барс 19:00")
+        return
+
+    game_time = datetime.strptime(f"{hour:02d}:{minute:02d}", "%H:%M").time()
     game_date = datetime.strptime(selected_game_date, "%Y-%m-%d").date()
 
     add_game_schedule(
@@ -572,7 +585,10 @@ async def handle_game_details_input(update: Update, context: ContextTypes.DEFAUL
         try:
             await context.bot.send_message(
                 chat_id=player_id,
-                text=f"Привет! {game_date.strftime('%d.%m.%Y')} в {game_time.strftime('%H:%M')} у нас будет игра с {opponent_name}"
+                text=(
+                    f"Привет! {game_date.strftime('%d.%m.%Y')} в {game_time.strftime('%H:%M')} "
+                    f"у нас будет игра с {opponent_name}"
+                )
             )
         except Exception:
             pass
@@ -934,7 +950,9 @@ async def back_to_coach_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data["awaiting_training_schedule_add"] = False
     context.user_data["awaiting_training_schedule_delete"] = False
     context.user_data["awaiting_training_schedule_manual_date"] = False
+    context.user_data["awaiting_game_details"] = False
     context.user_data.pop("transfer_training_schedule_id", None)
+    context.user_data.pop("selected_game_date", None)
 
     await update.message.reply_text(
         "Возвращаю в главное меню тренера.",
