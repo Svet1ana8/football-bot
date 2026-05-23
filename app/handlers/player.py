@@ -18,12 +18,19 @@ from app.handlers.coach import (
     show_unpaid_players,
     show_month_attendance,
 )
-from app.keyboards import get_approved_player_menu, get_learning_menu, get_playbook_menu
+from app.keyboards import (
+    get_approved_player_menu,
+    get_defense_video_menu,
+    get_documents_menu,
+    get_offense_video_menu,
+    get_playbook_menu,
+    get_special_teams_video_menu,
+    get_video_menu,
+)
 from app.repositories.payments import get_subscription_by_user_id
 from app.repositories.users import add_or_update_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
-from app.repositories.trainings import get_player_training_stats
 
 
 async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -48,14 +55,14 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if status == "pending":
         await update.message.reply_text(
-            "⏳ Статус заявки: на рассмотрении\n\n"
-            "Тренер ещё не принял решение."
+            "⏳ Твой статус: не одобрен\n\n"
+            "Твоя заявка ещё на рассмотрении у тренера."
         )
         return
 
     if status == "rejected":
         await update.message.reply_text(
-            "❌ Статус заявки: отклонена\n\n"
+            "❌ Твой статус: не одобрен\n\n"
             "Ты можешь подать заявку повторно."
         )
         return
@@ -66,69 +73,15 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     subscription = get_subscription_by_user_id(user.id)
 
-    text = "✅ Твой статус: одобрен\n\n"
+    text = "✅ Твой статус: одобрен\n"
 
     if not subscription:
-        text += "💳 Данные абонемента пока не заполнены."
+        text += "\nАбонемент: не указан"
         await update.message.reply_text(text)
         return
 
-    (
-        user_id,
-        payment_day,
-        subscription_end_date,
-        last_payment_date,
-        is_paid_current_period,
-        _has_custom_schedule,
-        payment_claimed,
-    ) = subscription
-
-    end_date_text = subscription_end_date.strftime("%d.%m.%Y") if subscription_end_date else "Не указана"
-    last_payment_text = last_payment_date.strftime("%d.%m.%Y") if last_payment_date else "Не указана"
-    paid_text = "Да" if is_paid_current_period else "Нет"
-    claimed_text = "Да" if payment_claimed else "Нет"
-
-    text += (
-        f"💳 Абонемент до: {end_date_text}\n"
-        f"📅 Дата оплаты: {last_payment_text}\n"
-        f"✅ Оплата подтверждена: {paid_text}\n"
-        f"💸 Кнопка «Оплатил»: {claimed_text}"
-    )
-
+    text += "\nАбонемент: месячный"
     await update.message.reply_text(text)
-
-
-async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📅 График тренировок скоро будет добавлен.")
-
-
-async def show_player_position(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏈 Твоя позиция пока не заполнена.")
-
-
-async def show_team_roster(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👥 Состав команды скоро будет добавлен.")
-
-
-async def show_attendance_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stats = get_player_training_stats(update.effective_user.id)
-
-    if not stats:
-        await update.message.reply_text("📊 Статистика тренировок пока недоступна.")
-        return
-
-    yes_count, no_count, total_count = stats
-
-    yes_count = yes_count or 0
-    no_count = no_count or 0
-    total_count = total_count or 0
-
-    await update.message.reply_text(
-        "📊 Статистика тренировок\n\n"
-        f"✅ Ответов «Приду»: {yes_count}\n"
-        f"❌ Ответов «Не приду»: {no_count}\n"
-        f"📌 Всего ответов: {total_count}"
-    )
 
 
 async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -148,64 +101,141 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         payment_claimed,
     ) = subscription
 
-    end_date_text = subscription_end_date.strftime("%d.%m.%Y") if subscription_end_date else "Не указана"
-    last_payment_text = last_payment_date.strftime("%d.%m.%Y") if last_payment_date else "Не указана"
     paid_text = "Да" if is_paid_current_period else "Нет"
-    claimed_text = "Да" if payment_claimed else "Нет"
+
+    days_left_text = "Не указано"
+    if subscription_end_date:
+        from datetime import date
+        days_left = (subscription_end_date - date.today()).days
+        days_left_text = str(days_left if days_left >= 0 else 0)
 
     await update.message.reply_text(
         "💳 Статус оплаты\n\n"
-        f"📅 Последняя оплата: {last_payment_text}\n"
-        f"💳 Оплачено до: {end_date_text}\n"
-        f"✅ Оплата подтверждена: {paid_text}\n"
-        f"💸 Отметка «Оплатил»: {claimed_text}"
+        f"Оплачено: {paid_text}\n"
+        f"Осталось дней: {days_left_text}"
     )
+
+
+async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📅 График тренировок скоро будет добавлен в виде календаря.")
 
 
 async def open_playbook_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📘 Плейбук. Выбери раздел:",
+        "📘 Playbook. Выбери раздел:",
         reply_markup=get_playbook_menu()
     )
 
 
 async def show_offense_playbook(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔥 Раздел «Нападение» скоро будет заполнен.")
+    await update.message.reply_text("📄 Документ по разделу «Нападение» скоро будет добавлен.")
 
 
 async def show_defense_playbook(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🛡 Раздел «Защита» скоро будет заполнен.")
-
-
-async def show_training_videos(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎥 Обучающее видео скоро будет добавлено.")
+    await update.message.reply_text("📄 Документ по разделу «Защита» скоро будет добавлен.")
 
 
 async def show_games_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏆 График игр скоро будет добавлен.")
+    await update.message.reply_text("🏆 График игр скоро будет добавлен в виде календаря.")
 
 
-async def open_learning_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def open_documents_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🎓 Обучение. Выбери раздел:",
-        reply_markup=get_learning_menu()
+        "📚 Документация. Выбери документ:",
+        reply_markup=get_documents_menu()
     )
 
 
-async def show_docs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📄 Документация скоро будет добавлена.")
+async def show_ifaf_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📘 Правила игры по американскому футболу IFAF 2025 скоро будут добавлены.")
 
 
-async def show_recovery(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("💪 Раздел по восстановлению скоро будет добавлен.")
+async def show_chrk_regulations(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("📄 Регламент ЧРК скоро будет добавлен.")
 
 
-async def show_pre_game_tips(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🏟 Рекомендации перед игрой скоро будут добавлены.")
+async def show_refereeing_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🧑‍⚖️ Руководство по судейству скоро будет добавлено.")
 
 
 async def show_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🎁 Раздел «Бонусы» скоро будет добавлен.")
+    await update.message.reply_text(
+        "🎁 Бонусы\n\n"
+        "Скидка за посещение всех тренировок: нет\n"
+        "Бесплатный абонемент за приведенного игрока: нет"
+    )
+
+
+async def open_video_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎥 Обучающее видео. Выбери раздел:",
+        reply_markup=get_video_menu()
+    )
+
+
+async def open_offense_video_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎥 Обучающее видео / Нападение",
+        reply_markup=get_offense_video_menu()
+    )
+
+
+async def open_defense_video_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎥 Обучающее видео / Защита",
+        reply_markup=get_defense_video_menu()
+    )
+
+
+async def open_special_teams_video_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🎥 Обучающее видео / Спецкоманды",
+        reply_markup=get_special_teams_video_menu()
+    )
+
+
+async def show_video_linear_offense(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: линейные (нападение) скоро будет добавлено.")
+
+
+async def show_video_receivers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: принимающие скоро будет добавлено.")
+
+
+async def show_video_qb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: квотербек скоро будет добавлено.")
+
+
+async def show_video_running_backs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: бегущие скоро будет добавлено.")
+
+
+async def show_video_linear_defense(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: линейные (защита) скоро будет добавлено.")
+
+
+async def show_video_linebackers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: лайнбекеры скоро будет добавлено.")
+
+
+async def show_video_corners(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: корнеры скоро будет добавлено.")
+
+
+async def show_video_safeties(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: сейфти скоро будет добавлено.")
+
+
+async def show_video_kicker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: кикер скоро будет добавлено.")
+
+
+async def show_video_longsnapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: лонгснэппер скоро будет добавлено.")
+
+
+async def show_video_punter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🎬 Видео для позиции: пантер скоро будет добавлено.")
 
 
 async def back_to_player_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -266,27 +296,15 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await my_status(update, context)
         return
 
-    if text == "График тренировок":
-        await show_training_schedule(update, context)
-        return
-
-    if text == "Моя позиция":
-        await show_player_position(update, context)
-        return
-
-    if text == "Состав команды":
-        await show_team_roster(update, context)
-        return
-
-    if text == "Количество посещенных тренировок":
-        await show_attendance_count(update, context)
-        return
-
     if text == "Статус оплаты":
         await show_payment_status(update, context)
         return
 
-    if text == "Плейбук":
+    if text == "График тренировок":
+        await show_training_schedule(update, context)
+        return
+
+    if text == "Playbook":
         await open_playbook_menu(update, context)
         return
 
@@ -302,28 +320,84 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_games_schedule(update, context)
         return
 
-    if text == "Обучение":
-        await open_learning_menu(update, context)
-        return
-
-    if text == "Обучающие видео":
-        await show_training_videos(update, context)
-        return
-
     if text == "Документация":
-        await show_docs(update, context)
+        await open_documents_menu(update, context)
         return
 
-    if text == "Как восстанавливаться после игры и тренировок":
-        await show_recovery(update, context)
+    if text == "Правила игры IFAF 2025":
+        await show_ifaf_rules(update, context)
         return
 
-    if text == "Рекомендации перед игрой":
-        await show_pre_game_tips(update, context)
+    if text == "Регламент ЧРК":
+        await show_chrk_regulations(update, context)
+        return
+
+    if text == "Руководство по судейству":
+        await show_refereeing_guide(update, context)
         return
 
     if text == "Бонусы":
         await show_bonuses(update, context)
+        return
+
+    if text == "Обучающее видео":
+        await open_video_menu(update, context)
+        return
+
+    if text == "Видео: Нападение":
+        await open_offense_video_menu(update, context)
+        return
+
+    if text == "Видео: Защита":
+        await open_defense_video_menu(update, context)
+        return
+
+    if text == "Видео: Спецкоманды":
+        await open_special_teams_video_menu(update, context)
+        return
+
+    if text == "Видео: Линейные нападение":
+        await show_video_linear_offense(update, context)
+        return
+
+    if text == "Видео: Принимающие":
+        await show_video_receivers(update, context)
+        return
+
+    if text == "Видео: Квотербек":
+        await show_video_qb(update, context)
+        return
+
+    if text == "Видео: Бегущие":
+        await show_video_running_backs(update, context)
+        return
+
+    if text == "Видео: Линейные защита":
+        await show_video_linear_defense(update, context)
+        return
+
+    if text == "Видео: Лайнбекеры":
+        await show_video_linebackers(update, context)
+        return
+
+    if text == "Видео: Корнеры":
+        await show_video_corners(update, context)
+        return
+
+    if text == "Видео: Сейфти":
+        await show_video_safeties(update, context)
+        return
+
+    if text == "Видео: Кикер":
+        await show_video_kicker(update, context)
+        return
+
+    if text == "Видео: Лонгснэппер":
+        await show_video_longsnapper(update, context)
+        return
+
+    if text == "Видео: Пантер":
+        await show_video_punter(update, context)
         return
 
     if text == "Новые заявки":
@@ -366,6 +440,13 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await deny_access(update)
             return
         await show_training_status(update, context)
+        return
+
+    if text == "Посещаемость":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        await show_month_attendance(update, context)
         return
 
     if text == "Оплаты":
@@ -415,11 +496,4 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await back_to_coach_menu(update, context)
             return
         await back_to_player_menu(update, context)
-        return
-
-    if text == "Посещаемость":
-        if not is_coach(update.effective_user.id):
-            await deny_access(update)
-            return
-        await show_month_attendance(update, context)
         return
