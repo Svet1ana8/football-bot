@@ -355,6 +355,9 @@ async def open_training_schedule_menu(update: Update, context: ContextTypes.DEFA
         await deny_access(update)
         return
 
+    context.user_data["awaiting_training_schedule_add"] = False
+    context.user_data["awaiting_training_schedule_delete"] = False
+
     await update.message.reply_text(
         "Календарь тренировок. Выбери действие:",
         reply_markup=get_training_schedule_menu()
@@ -382,22 +385,44 @@ async def show_training_calendar(update: Update, context: ContextTypes.DEFAULT_T
         6: "Воскресенье",
     }
 
-    text = "📅 Календарь тренировок\n\n"
+    months = {
+        1: "Январь",
+        2: "Февраль",
+        3: "Март",
+        4: "Апрель",
+        5: "Май",
+        6: "Июнь",
+        7: "Июль",
+        8: "Август",
+        9: "Сентябрь",
+        10: "Октябрь",
+        11: "Ноябрь",
+        12: "Декабрь",
+    }
 
+    grouped = {}
     for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
-        weekday_name = weekdays[training_date.weekday()]
-        date_text = training_date.strftime("%d.%m.%Y")
-        time_text = training_time.strftime("%H:%M")
+        key = (training_date.year, training_date.month)
+        grouped.setdefault(key, []).append((training_date, training_time, comment))
 
-        text += f"ID: {schedule_id}\n"
-        text += f"{weekday_name} — {date_text}, {time_text}"
+    parts = ["📅 Календарь тренировок\n"]
 
-        if comment:
-            text += f"\nКомментарий: {comment}"
+    for (year, month), items in grouped.items():
+        parts.append(f"\n{months[month]} {year}\n")
 
-        text += "\n\n"
+        for training_date, training_time, comment in items:
+            weekday_name = weekdays[training_date.weekday()]
+            date_text = training_date.strftime("%d.%m.%Y")
+            time_text = training_time.strftime("%H:%M")
 
-    await update.message.reply_text(text)
+            line = f"{weekday_name} — {date_text}, {time_text}"
+            if comment:
+                line += f"\nКомментарий: {comment}"
+
+            parts.append(line)
+            parts.append("")
+
+    await update.message.reply_text("\n".join(parts).strip())
 
 
 async def start_add_training_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -406,7 +431,7 @@ async def start_add_training_schedule(update: Update, context: ContextTypes.DEFA
         return
 
     context.user_data["awaiting_training_schedule_add"] = True
-    context.user_data.pop("awaiting_training_schedule_delete", None)
+    context.user_data["awaiting_training_schedule_delete"] = False
 
     await update.message.reply_text(
         "Отправь дату и время новой тренировки в формате:\n\n"
@@ -422,67 +447,10 @@ async def start_delete_training_schedule(update: Update, context: ContextTypes.D
         return
 
     context.user_data["awaiting_training_schedule_delete"] = True
-    context.user_data.pop("awaiting_training_schedule_add", None)
-
-    await update.message.reply_text(
-        "Отправь ID тренировки, которую нужно удалить из календаря."
-    )
-
-
-async def handle_training_schedule_add_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    raw_text = update.message.text.strip()
-
-    try:
-        parsed_dt = datetime.strptime(raw_text, "%d.%m.%Y %H:%M")
-    except ValueError:
-        await update.message.reply_text(
-            "Неверный формат.\n\n"
-            "Используй:\n"
-            "ДД.ММ.ГГГГ ЧЧ:ММ\n\n"
-            "Например:\n"
-            "25.05.2026 21:00"
-        )
-        return
-
-    schedule_id = add_training_schedule(
-        training_date=parsed_dt.date(),
-        training_time=parsed_dt.time(),
-        comment=None,
-    )
-
     context.user_data["awaiting_training_schedule_add"] = False
 
     await update.message.reply_text(
-        f"✅ Тренировка добавлена в календарь.\n"
-        f"ID: {schedule_id}\n"
-        f"Дата: {parsed_dt.strftime('%d.%m.%Y %H:%M')}"
-    )
-
-
-async def handle_training_schedule_delete_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    raw_text = update.message.text.strip()
-
-    try:
-        schedule_id = int(raw_text)
-    except ValueError:
-        await update.message.reply_text("ID должен быть числом.")
-        return
-
-    schedule_row = get_training_schedule_by_id(schedule_id)
-
-    if not schedule_row:
-        await update.message.reply_text("Тренировка с таким ID не найдена.")
-        return
-
-    deactivate_training_schedule(schedule_id)
-    context.user_data["awaiting_training_schedule_delete"] = False
-
-    _, training_date, training_time, comment, is_active, created_at = schedule_row
-
-    await update.message.reply_text(
-        f"🗑 Тренировка удалена из календаря.\n"
-        f"ID: {schedule_id}\n"
-        f"Дата: {training_date.strftime('%d.%m.%Y')} {training_time.strftime('%H:%M')}"
+        "Отправь ID тренировки, которую нужно удалить из календаря."
     )
 
 

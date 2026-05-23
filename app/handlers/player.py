@@ -161,8 +161,6 @@ async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("📅 График тренировок пока пуст.")
         return
 
-    text = "📅 График тренировок\n\n"
-
     weekdays = {
         0: "Понедельник",
         1: "Вторник",
@@ -173,19 +171,44 @@ async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_T
         6: "Воскресенье",
     }
 
+    months = {
+        1: "Январь",
+        2: "Февраль",
+        3: "Март",
+        4: "Апрель",
+        5: "Май",
+        6: "Июнь",
+        7: "Июль",
+        8: "Август",
+        9: "Сентябрь",
+        10: "Октябрь",
+        11: "Ноябрь",
+        12: "Декабрь",
+    }
+
+    grouped = {}
     for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
-        weekday_name = weekdays[training_date.weekday()]
-        date_text = training_date.strftime("%d.%m.%Y")
-        time_text = training_time.strftime("%H:%M")
+        key = (training_date.year, training_date.month)
+        grouped.setdefault(key, []).append((training_date, training_time, comment))
 
-        text += f"{weekday_name} — {date_text}, {time_text}"
+    parts = ["📅 График тренировок\n"]
 
-        if comment:
-            text += f"\nКомментарий: {comment}"
+    for (year, month), items in grouped.items():
+        parts.append(f"\n{months[month]} {year}\n")
 
-        text += "\n\n"
+        for training_date, training_time, comment in items:
+            weekday_name = weekdays[training_date.weekday()]
+            date_text = training_date.strftime("%d.%m.%Y")
+            time_text = training_time.strftime("%H:%M")
 
-    await update.message.reply_text(text)
+            line = f"{weekday_name} — {date_text}, {time_text}"
+            if comment:
+                line += f"\nКомментарий: {comment}"
+
+            parts.append(line)
+            parts.append("")
+
+    await update.message.reply_text("\n".join(parts).strip())
 
 
 async def open_playbook_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
