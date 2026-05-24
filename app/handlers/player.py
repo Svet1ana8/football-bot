@@ -318,21 +318,30 @@ async def show_defense_playbook(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def open_documents_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📚 Документация. Выбери документ:",
+        "📚 Документация\n\nВыбери документ:",
         reply_markup=get_documents_menu()
     )
 
 
 async def show_ifaf_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📘 Правила игры по американскому футболу IFAF 2025 скоро будут добавлены.")
+    await update.message.reply_text(
+        "📘 Правила игры по американскому футболу IFAF 2025\n\n"
+        "Документ пока не загружен."
+    )
 
 
 async def show_chrk_regulations(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📄 Регламент ЧРК скоро будет добавлен.")
+    await update.message.reply_text(
+        "📄 Регламент ЧРК\n\n"
+        "Документ пока не загружен."
+    )
 
 
 async def show_refereeing_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🧑‍⚖️ Руководство по судейству скоро будет добавлено.")
+    await update.message.reply_text(
+        "🧑‍⚖️ Руководство по судейству\n\n"
+        "Документ пока не загружен."
+    )
 
 
 async def show_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
