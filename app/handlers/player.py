@@ -42,7 +42,7 @@ from app.keyboards import (
     get_video_menu,
 )
 from app.repositories.game_schedule import get_upcoming_game_schedule
-from app.repositories.payments import get_subscription_by_user_id
+from app.repositories.payments import get_player_bonuses, get_subscription_by_user_id
 from app.repositories.training_schedule import get_upcoming_training_schedule
 from app.repositories.users import add_or_update_user, get_user_by_id
 from app.services.access import is_coach
@@ -345,10 +345,25 @@ async def show_refereeing_guide(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def show_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    bonuses = get_player_bonuses(update.effective_user.id)
+
+    if not bonuses:
+        await update.message.reply_text(
+            "🎁 Бонусы\n\n"
+            "Скидка за посещение всех тренировок: нет\n"
+            "Бесплатный абонемент за приведенного игрока: нет"
+        )
+        return
+
+    full_attendance_bonus, referral_bonus = bonuses
+
+    attendance_text = "получен" if full_attendance_bonus else "нет"
+    referral_text = "получен" if referral_bonus else "нет"
+
     await update.message.reply_text(
         "🎁 Бонусы\n\n"
-        "Скидка за посещение всех тренировок: нет\n"
-        "Бесплатный абонемент за приведенного игрока: нет"
+        f"Скидка за посещение всех тренировок: {attendance_text}\n"
+        f"Бесплатный абонемент за приведенного игрока: {referral_text}"
     )
 
 

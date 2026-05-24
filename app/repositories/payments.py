@@ -20,9 +20,11 @@ def create_subscription_for_user(
                     last_payment_date,
                     is_paid_current_period,
                     has_custom_schedule,
-                    payment_claimed
+                    payment_claimed,
+                    full_attendance_bonus,
+                    referral_bonus
                 )
-                VALUES (%s, %s, %s, NULL, NULL, FALSE, FALSE, FALSE)
+                VALUES (%s, %s, %s, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE)
                 ON CONFLICT (user_id) DO NOTHING
             """, (user_id, payment_day, subscription_type))
         conn.commit()
@@ -284,3 +286,36 @@ def get_all_payment_history(limit: int = 50):
                 LIMIT %s
             """, (limit,))
             return cur.fetchall()
+
+
+def get_player_bonuses(user_id: int):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT full_attendance_bonus, referral_bonus
+                FROM player_subscriptions
+                WHERE user_id = %s
+            """, (user_id,))
+            return cur.fetchone()
+
+
+def set_referral_bonus(user_id: int, value: bool):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE player_subscriptions
+                SET referral_bonus = %s
+                WHERE user_id = %s
+            """, (value, user_id))
+        conn.commit()
+
+
+def set_full_attendance_bonus(user_id: int, value: bool):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE player_subscriptions
+                SET full_attendance_bonus = %s
+                WHERE user_id = %s
+            """, (value, user_id))
+        conn.commit()

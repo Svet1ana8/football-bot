@@ -96,4 +96,14 @@ def init_db():
                 )
             """)
 
+            cur.execute("""
+                ALTER TABLE player_subscriptions
+                ADD COLUMN IF NOT EXISTS full_attendance_bonus BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+
+            cur.execute("""
+                ALTER TABLE player_subscriptions
+                ADD COLUMN IF NOT EXISTS referral_bonus BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+
         conn.commit()
