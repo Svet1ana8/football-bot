@@ -16,6 +16,7 @@ from app.handlers.coach import (
     open_payments_menu,
     open_subscription_type_menu,
     open_training_schedule_menu,
+    refresh_player_menus,
     send_payment_reminder_by_month,
     send_training_reminder,
     show_all_subscriptions,
@@ -809,4 +810,12 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         reset_coach_temp_state(context)
         await open_subscription_type_menu(update, context)
+        return
+
+    if text == "Обновить меню игрокам":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+        reset_coach_temp_state(context)
+        await refresh_player_menus(update, context)
         return
