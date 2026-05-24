@@ -165,9 +165,33 @@ def get_unpaid_subscriptions(today: date, days_before: int = 5):
             return cur.fetchall()
 
 
-def confirm_payment(user_id: int, today: date, new_end_date: date):
+from datetime import date
+
+
+def _get_next_subscription_end_date(today: date, payment_day: int = 28) -> date:
+    year = today.year
+    month = today.month + 1
+
+    if month == 13:
+        month = 1
+        year += 1
+
+    return date(year, month, payment_day)
+
+
+def confirm_payment(user_id: int, today: date):
     with get_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute("""
+                SELECT payment_day
+                FROM player_subscriptions
+                WHERE user_id = %s
+            """, (user_id,))
+            row = cur.fetchone()
+
+            payment_day = row[0] if row and row[0] else 28
+            new_end_date = _get_next_subscription_end_date(today, payment_day)
+
             cur.execute("""
                 UPDATE player_subscriptions
                 SET is_paid_current_period = TRUE,
@@ -177,6 +201,8 @@ def confirm_payment(user_id: int, today: date, new_end_date: date):
                 WHERE user_id = %s
             """, (today, new_end_date, user_id))
         conn.commit()
+
+    return new_end_date
 
 
 def get_unpaid_subscriptions_with_users(today: date, days_before: int = 5):

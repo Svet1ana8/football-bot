@@ -4,7 +4,7 @@ import calendar
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from app.config import COACH_IDS, SUBSCRIPTION_DURATION_DAYS
+from app.config import COACH_IDS
 from app.keyboards import get_approved_player_menu, get_player_menu
 from app.repositories.payments import (
     add_payment_history,
@@ -487,13 +487,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_name = target_user[2] if target_user and target_user[2] else str(target_user_id)
 
         today = date.today()
-        new_end_date = today + timedelta(days=SUBSCRIPTION_DURATION_DAYS)
 
-        confirm_payment(
+        # Временно оставляем вызов функции, которую потом обновим в repositories/payments.py
+        new_end_date = confirm_payment(
             user_id=target_user_id,
             today=today,
-            new_end_date=new_end_date
         )
+
         add_payment_history(
             user_id=target_user_id,
             action="confirmed",
