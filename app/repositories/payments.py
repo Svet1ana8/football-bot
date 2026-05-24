@@ -345,3 +345,28 @@ def set_full_attendance_bonus(user_id: int, value: bool):
                 WHERE user_id = %s
             """, (value, user_id))
         conn.commit()
+
+def get_overdue_subscription_end_with_users(today: date):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    ps.user_id,
+                    u.username,
+                    u.first_name,
+                    ps.payment_day,
+                    ps.subscription_type,
+                    ps.subscription_end_date,
+                    ps.last_payment_date,
+                    ps.is_paid_current_period,
+                    ps.has_custom_schedule,
+                    ps.payment_claimed
+                FROM player_subscriptions ps
+                JOIN users u ON u.user_id = ps.user_id
+                WHERE ps.is_paid_current_period = FALSE
+                  AND ps.subscription_end_date IS NOT NULL
+                  AND ps.subscription_end_date < %s
+                  AND u.status = 'approved'
+                ORDER BY ps.subscription_end_date, ps.user_id
+            """, (today,))
+            return cur.fetchall()

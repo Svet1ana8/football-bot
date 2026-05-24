@@ -15,6 +15,11 @@ from app.repositories.payments import (
 )
 from app.services.access import is_broadcast_recipient
 from app.utils.dates import get_month_name_prepositional
+from app.repositories.payments import (
+    get_overdue_subscription_end_with_users,
+    get_subscriptions_ending_soon_with_users,
+    get_unpaid_subscriptions_with_users,
+)
 
 
 def get_payment_keyboard():
@@ -204,6 +209,15 @@ def schedule_daily_payment_jobs(application):
             name="subscription_ending_reminders",
         )
 
+    existing_overdue_jobs = application.job_queue.get_jobs_by_name("subscription_overdue_reminders")
+    if not existing_overdue_jobs:
+        application.job_queue.run_repeating(
+            send_subscription_overdue_reminders,
+            interval=PAYMENT_REMINDER_REPEAT_MINUTES * 60,
+            first=10,
+            name="subscription_overdue_reminders",
+        )
+
     existing_unpaid_jobs = application.job_queue.get_jobs_by_name("unpaid_payment_reminders")
     if not existing_unpaid_jobs:
         application.job_queue.run_repeating(
@@ -212,3 +226,59 @@ def schedule_daily_payment_jobs(application):
             first=10,
             name="unpaid_payment_reminders",
         )
+
+def build_subscription_overdue_message(first_name: str | None, overdue_days: int) -> str:
+    name = first_name or "игрок"
+    days_word = plural_days(overdue_days)
+
+    return (
+        f"Добрый день, {name}. Напоминаем, что срок действия вашего абонемента уже истёк. "
+        f"Просрочка: {overdue_days} {days_word}. Пожалуйста, оплатите продление."
+    )
+async def send_subscription_overdue_reminders(context: ContextTypes.DEFAULT_TYPE):
+    today = datetime.now(TIMEZONE).date()
+    subscriptions = get_overdue_subscription_end_with_users(today)
+
+    if not subscriptions:
+        print("Нет игроков с просроченным окончанием абонемента.")
+        return
+
+    sent_count = 0
+    reply_markup = get_payment_keyboard()
+
+    for (
+        user_id,
+        username,
+        first_name,
+        payment_day,
+        subscription_type,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) in subscriptions:
+        if not is_broadcast_recipient(user_id):
+            continue
+
+        if not subscription_end_date:
+            continue
+
+        overdue_days = (today - subscription_end_date).days
+
+        if overdue_days <= 0:
+            continue
+
+        message_text = build_subscription_overdue_message(first_name, overdue_days)
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=message_text,
+                reply_markup=reply_markup
+            )
+            sent_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить напоминание о просрочке абонемента игроку {user_id}: {e}")
+
+    print(f"Отправлено напоминаний о просроченном окончании абонемента: {sent_count}")
