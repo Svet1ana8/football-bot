@@ -1096,3 +1096,34 @@ async def show_month_attendance(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
     await update.message.reply_text(text)
+
+async def refresh_player_menus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    approved_users = get_users_by_status("approved")
+
+    if not approved_users:
+        await update.message.reply_text("Нет одобренных игроков для обновления меню.")
+        return
+
+    success_count = 0
+    fail_count = 0
+
+    for user_id, username, first_name in approved_users:
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="Меню обновлено.",
+                reply_markup=get_approved_player_menu()
+            )
+            success_count += 1
+        except Exception:
+            fail_count += 1
+
+    await update.message.reply_text(
+        f"Обновление меню завершено.\n"
+        f"Успешно: {success_count}\n"
+        f"Ошибок: {fail_count}"
+    )

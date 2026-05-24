@@ -15,6 +15,7 @@ from app.handlers.coach import (
     approve,
     approved,
     coach,
+    refresh_player_menus,
     reject,
     send_message_to_approved,
     test_subscription_reminders,
@@ -42,6 +43,7 @@ def main():
     app.add_handler(CommandHandler("approved", approved))
     app.add_handler(CommandHandler("send", send_message_to_approved))
     app.add_handler(CommandHandler("test_sub_reminders", test_subscription_reminders))
+    app.add_handler(CommandHandler("refresh_menu", refresh_player_menus))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_handler))
 
