@@ -1,6 +1,6 @@
 from app.db import get_connection
 
-USER_ID = 123456789  # сюда вставь id игрока
+USER_ID =  556109902  # сюда вставь ID игрока
 
 with get_connection() as conn:
     with conn.cursor() as cur:
