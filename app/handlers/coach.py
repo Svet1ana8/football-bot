@@ -1128,7 +1128,7 @@ async def refresh_player_menus(update: Update, context: ContextTypes.DEFAULT_TYP
         f"Ошибок: {fail_count}"
     )
 
-    async def test_subscription_end_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def test_subscription_end_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
