@@ -1,6 +1,9 @@
 from telegram import ReplyKeyboardMarkup
 
 
+from telegram import ReplyKeyboardMarkup
+
+
 def get_player_menu():
     keyboard = [
         ["Подать заявку", "Мой статус"],
@@ -104,6 +107,7 @@ def get_training_schedule_menu():
         ["Назад"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
 
 def get_games_schedule_menu():
     keyboard = [
