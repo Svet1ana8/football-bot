@@ -246,10 +246,25 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ) = subscription
 
     subscription_type_text = "месячный"
+    subscription_description = (
+        "Стоимость: 25 000 тенге\n"
+        "Ты регулярно посещаешь тренировки. "
+        "Получаешь высший приоритет в участии в играх."
+    )
+
     if subscription_type == "game":
         subscription_type_text = "игровой"
+        subscription_description = (
+            "Стоимость: 30 000 тенге\n"
+            "Ты можешь принимать участие в играх. "
+            "Тренер сам определит тебя на позицию."
+        )
 
-    text += f"\nАбонемент: {subscription_type_text}"
+    text += (
+        f"\nАбонемент: {subscription_type_text}\n"
+        f"{subscription_description}"
+    )
+
     await update.message.reply_text(text)
 
 
