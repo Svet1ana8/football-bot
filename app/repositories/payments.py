@@ -144,7 +144,7 @@ def get_subscriptions_ending_soon(today: date, days: int = 5):
             return cur.fetchall()
 
 
-def get_unpaid_subscriptions(today: date):
+def get_unpaid_subscriptions(today: date, days_before: int = 5):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -158,10 +158,10 @@ def get_unpaid_subscriptions(today: date):
                     has_custom_schedule,
                     payment_claimed
                 FROM player_subscriptions
-                WHERE payment_day <= %s
-                  AND is_paid_current_period = FALSE
+                WHERE is_paid_current_period = FALSE
+                  AND (payment_day - %s) BETWEEN 0 AND %s
                 ORDER BY payment_day, user_id
-            """, (today.day,))
+            """, (today.day, days_before))
             return cur.fetchall()
 
 
@@ -179,7 +179,7 @@ def confirm_payment(user_id: int, today: date, new_end_date: date):
         conn.commit()
 
 
-def get_unpaid_subscriptions_with_users(today: date):
+def get_unpaid_subscriptions_with_users(today: date, days_before: int = 5):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -196,11 +196,11 @@ def get_unpaid_subscriptions_with_users(today: date):
                     ps.payment_claimed
                 FROM player_subscriptions ps
                 JOIN users u ON u.user_id = ps.user_id
-                WHERE ps.payment_day <= %s
-                  AND ps.is_paid_current_period = FALSE
+                WHERE ps.is_paid_current_period = FALSE
+                  AND (ps.payment_day - %s) BETWEEN 0 AND %s
                   AND u.status = 'approved'
                 ORDER BY ps.payment_day, ps.user_id
-            """, (today.day,))
+            """, (today.day, days_before))
             return cur.fetchall()
 
 
