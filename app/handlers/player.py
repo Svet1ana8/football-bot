@@ -297,17 +297,23 @@ async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_T
 
 async def open_playbook_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📘 Playbook. Выбери раздел:",
+        "📘 Playbook\n\nВыбери раздел:",
         reply_markup=get_playbook_menu()
     )
 
 
 async def show_offense_playbook(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📄 Документ по разделу «Нападение» скоро будет добавлен.")
+    await update.message.reply_text(
+        "📘 Playbook / Нападение\n\n"
+        "Документ по нападению пока не загружен."
+    )
 
 
 async def show_defense_playbook(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📄 Документ по разделу «Защита» скоро будет добавлен.")
+    await update.message.reply_text(
+        "📘 Playbook / Защита\n\n"
+        "Документ по защите пока не загружен."
+    )
 
 
 async def open_documents_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
