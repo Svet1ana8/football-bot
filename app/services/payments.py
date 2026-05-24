@@ -37,21 +37,36 @@ def build_subscription_ending_message(first_name: str | None, days_left: int) ->
 
     return (
         f"Добрый день, {name}. "
-        f"Напоминаем вам, что действие вашего абонемента заканчивается через {days_left} {days_word}."
+        f"Напоминаем вам, что действие вашего абонемента заканчивается через {days_left} {days_word}. "
+        "Пожалуйста, не забудьте оплатить продление."
     )
 
 
 def build_payment_reminder_message() -> str:
     month_name = get_month_name_prepositional(datetime.now(TIMEZONE))
     return (
-        f"Добрый вечер, у вас настало время оплатить за тренировки в {month_name}. "
-        f"Прошу сделать это."
+        f"Добрый вечер. Напоминаем об оплате абонемента за {month_name}. "
+        "Пожалуйста, произведите оплату."
+    )
+
+
+def build_overdue_payment_message(first_name: str | None, overdue_days: int) -> str:
+    name = first_name or "игрок"
+    days_word = plural_days(overdue_days)
+    month_name = get_month_name_prepositional(datetime.now(TIMEZONE))
+
+    return (
+        f"Добрый день, {name}. Напоминаем, что абонемент за {month_name} не оплачен. "
+        f"Просрочка: {overdue_days} {days_word}."
     )
 
 
 async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE):
     today = datetime.now(TIMEZONE).date()
-    subscriptions = get_subscriptions_ending_soon_with_users(today, days=SUBSCRIPTION_END_REMINDER_DAYS)
+    subscriptions = get_subscriptions_ending_soon_with_users(
+        today,
+        days=SUBSCRIPTION_END_REMINDER_DAYS,
+    )
 
     if not subscriptions:
         print("Нет игроков с абонементом, который скоро заканчивается.")
@@ -79,7 +94,7 @@ async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE)
 
         days_left = (subscription_end_date - today).days
 
-        if days_left not in list(range(1, SUBSCRIPTION_END_REMINDER_DAYS + 1)):
+        if days_left not in range(1, SUBSCRIPTION_END_REMINDER_DAYS + 1):
             continue
 
         message_text = build_subscription_ending_message(first_name, days_left)
@@ -98,11 +113,10 @@ async def send_unpaid_reminders(context: ContextTypes.DEFAULT_TYPE):
     subscriptions = get_unpaid_subscriptions_with_users(today)
 
     if not subscriptions:
-        print("Нет игроков, которым нужно напоминание об оплате.")
+        print("Нет игроков с просроченной оплатой.")
         return
 
     sent_count = 0
-    message_text = build_payment_reminder_message()
     reply_markup = get_payment_keyboard()
 
     for (
@@ -120,6 +134,13 @@ async def send_unpaid_reminders(context: ContextTypes.DEFAULT_TYPE):
         if not is_broadcast_recipient(user_id):
             continue
 
+        overdue_days = today.day - payment_day
+
+        if overdue_days <= 0:
+            continue
+
+        message_text = build_overdue_payment_message(first_name, overdue_days)
+
         try:
             await context.bot.send_message(
                 chat_id=user_id,
@@ -128,9 +149,9 @@ async def send_unpaid_reminders(context: ContextTypes.DEFAULT_TYPE):
             )
             sent_count += 1
         except Exception as e:
-            print(f"Не удалось отправить напоминание об оплате игроку {user_id}: {e}")
+            print(f"Не удалось отправить напоминание о просрочке игроку {user_id}: {e}")
 
-    print(f"Отправлено напоминаний об оплате: {sent_count}")
+    print(f"Отправлено напоминаний о просроченной оплате: {sent_count}")
 
 
 async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):

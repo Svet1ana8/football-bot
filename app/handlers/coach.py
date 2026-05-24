@@ -1127,3 +1127,13 @@ async def refresh_player_menus(update: Update, context: ContextTypes.DEFAULT_TYP
         f"Успешно: {success_count}\n"
         f"Ошибок: {fail_count}"
     )
+
+    async def test_subscription_end_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+
+        from app.services.payments import send_subscription_ending_reminders
+
+        await send_subscription_ending_reminders(context)
+        await update.message.reply_text("Тест напоминаний об окончании абонемента выполнен.")
