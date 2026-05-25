@@ -83,6 +83,7 @@ def get_coach_menu():
         ["Посещаемость", "Календарь тренировок"],
         ["Календарь игр", "Оплаты"],
         ["Обновить меню игрокам"],
+        ["Обновить меню"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

@@ -46,7 +46,9 @@ from app.repositories.game_schedule import get_upcoming_game_schedule
 from app.repositories.payments import get_player_bonuses, get_subscription_by_user_id
 from app.repositories.training_schedule import get_upcoming_training_schedule
 from app.repositories.users import add_or_update_user, get_user_by_id
+from app.keyboards import get_coach_menu
 from app.services.access import is_coach
+from app.handlers.coach import deny_access
 from app.services.notifications import notify_coaches_about_request
 from pathlib import Path
 
@@ -485,6 +487,17 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await deny_access(update)
             return
         await open_games_schedule_menu(update, context)
+        return
+
+    if text == "Обновить меню":
+        if not is_coach(update.effective_user.id):
+            await deny_access(update)
+            return
+
+        await update.message.reply_text(
+            "Меню обновлено.",
+            reply_markup=get_coach_menu()
+        )
         return
 
     if text == "Показать календарь игр":
