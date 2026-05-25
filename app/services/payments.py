@@ -204,27 +204,29 @@ async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
     return success_count, fail_count
 
 
-def schedule_daily_payment_jobs(application):
-    # Напоминания о скором окончании абонемента — ТОЧНЫЕ ЧАСЫ
-    reminder_schedule = [
-        ("subscription_end_reminders_5d", time(12, 0, tzinfo=TIMEZONE), {5}),
-        ("subscription_end_reminders_4d", time(12, 0, tzinfo=TIMEZONE), {4}),
-        ("subscription_end_reminders_3d_10", time(10, 0, tzinfo=TIMEZONE), {3}),
-        ("subscription_end_reminders_3d_15", time(15, 0, tzinfo=TIMEZONE), {3}),
-        ("subscription_end_reminders_3d_20", time(20, 0, tzinfo=TIMEZONE), {3}),
-        ("subscription_end_reminders_2d_09", time(9, 0, tzinfo=TIMEZONE), {2}),
-        ("subscription_end_reminders_2d_11", time(11, 0, tzinfo=TIMEZONE), {2}),
-        ("subscription_end_reminders_2d_13", time(13, 0, tzinfo=TIMEZONE), {2}),
-        ("subscription_end_reminders_2d_15", time(15, 0, tzinfo=TIMEZONE), {2}),
-        ("subscription_end_reminders_2d_18", time(18, 0, tzinfo=TIMEZONE), {2}),
-        ("subscription_end_reminders_2d_21", time(21, 0, tzinfo=TIMEZONE), {2}),
-        ("subscription_end_reminders_1d_09", time(9, 0, tzinfo=TIMEZONE), {1}),
-        ("subscription_end_reminders_1d_11", time(11, 0, tzinfo=TIMEZONE), {1}),
-        ("subscription_end_reminders_1d_13", time(13, 0, tzinfo=TIMEZONE), {1}),
-        ("subscription_end_reminders_1d_15", time(15, 0, tzinfo=TIMEZONE), {1}),
-        ("subscription_end_reminders_1d_18", time(18, 0, tzinfo=TIMEZONE), {1}),
-        ("subscription_end_reminders_1d_21", time(21, 0, tzinfo=TIMEZONE), {1}),
-    ]
+reminder_schedule = [
+    # За 5 и 4 дня — 2 раза в день
+    ("subscription_end_reminders_5d_09", time(9, 0, tzinfo=TIMEZONE), {5}),
+    ("subscription_end_reminders_5d_23", time(23, 0, tzinfo=TIMEZONE), {5}),
+    ("subscription_end_reminders_4d_09", time(9, 0, tzinfo=TIMEZONE), {4}),
+    ("subscription_end_reminders_4d_23", time(23, 0, tzinfo=TIMEZONE), {4}),
+
+    # За 3 и 2 дня — 3 раза в день
+    ("subscription_end_reminders_3d_09", time(9, 0, tzinfo=TIMEZONE), {3}),
+    ("subscription_end_reminders_3d_14", time(14, 0, tzinfo=TIMEZONE), {3}),
+    ("subscription_end_reminders_3d_20", time(20, 0, tzinfo=TIMEZONE), {3}),
+    ("subscription_end_reminders_2d_09", time(9, 0, tzinfo=TIMEZONE), {2}),
+    ("subscription_end_reminders_2d_14", time(14, 0, tzinfo=TIMEZONE), {2}),
+    ("subscription_end_reminders_2d_20", time(20, 0, tzinfo=TIMEZONE), {2}),
+
+    # За 1 день — 6 раз в день
+    ("subscription_end_reminders_1d_09", time(9, 0, tzinfo=TIMEZONE), {1}),
+    ("subscription_end_reminders_1d_11", time(11, 0, tzinfo=TIMEZONE), {1}),
+    ("subscription_end_reminders_1d_14", time(14, 0, tzinfo=TIMEZONE), {1}),
+    ("subscription_end_reminders_1d_18", time(18, 0, tzinfo=TIMEZONE), {1}),
+    ("subscription_end_reminders_1d_20", time(20, 0, tzinfo=TIMEZONE), {1}),
+    ("subscription_end_reminders_1d_23_30", time(23, 30, tzinfo=TIMEZONE), {1}),
+]
 
     for job_name, job_time, job_days in reminder_schedule:
         existing_jobs = application.job_queue.get_jobs_by_name(job_name)
