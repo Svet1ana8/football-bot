@@ -1,17 +1,16 @@
-from datetime import datetime
+from datetime import datetime, time
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from app.config import (
-    PAYMENT_REMINDER_REPEAT_MINUTES,
     SUBSCRIPTION_END_REMINDER_DAYS,
     TIMEZONE,
 )
 from app.repositories.payments import (
     get_overdue_subscription_end_with_users,
+    get_payment_due_today_with_users,
     get_subscriptions_ending_soon_with_users,
-    get_unpaid_subscriptions_with_users,
 )
 from app.services.access import is_broadcast_recipient
 from app.utils.dates import get_month_name_prepositional
@@ -60,24 +59,11 @@ def build_subscription_overdue_message(first_name: str | None, overdue_days: int
     )
 
 
-def should_send_ending_reminder(days_left: int, now: datetime) -> bool:
-    current_hm = now.strftime("%H:%M")
-
-    schedule = {
-        5: {"12:00"},
-        4: {"12:00"},
-        3: {"10:00", "15:00", "20:00"},
-        2: {"09:00", "11:00", "13:00", "15:00", "18:00", "21:00"},
-        1: {"09:00", "11:00", "13:00", "15:00", "18:00", "21:00"},
-    }
-
-    return current_hm in schedule.get(days_left, set())
-
-
 async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TIMEZONE)
     today = now.date()
 
+    days_set = context.job.data["days"]
     subscriptions = get_subscriptions_ending_soon_with_users(
         today,
         days=SUBSCRIPTION_END_REMINDER_DAYS,
@@ -108,11 +94,7 @@ async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE)
             continue
 
         days_left = (subscription_end_date - today).days
-
-        if days_left not in range(1, SUBSCRIPTION_END_REMINDER_DAYS + 1):
-            continue
-
-        if not should_send_ending_reminder(days_left, now):
+        if days_left not in days_set:
             continue
 
         message_text = build_subscription_ending_message(first_name, days_left)
@@ -121,13 +103,16 @@ async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE)
             await context.bot.send_message(
                 chat_id=user_id,
                 text=message_text,
-                reply_markup=get_payment_keyboard()
+                reply_markup=get_payment_keyboard(),
             )
             sent_count += 1
         except Exception as e:
             print(f"Не удалось отправить напоминание игроку {user_id}: {e}")
 
-    print(f"Отправлено напоминаний о скором окончании абонемента: {sent_count}")
+    print(
+        f"Отправлено напоминаний о скором окончании абонемента: {sent_count}. "
+        f"Дни: {sorted(days_set)}"
+    )
 
 
 async def send_subscription_overdue_reminders(context: ContextTypes.DEFAULT_TYPE):
@@ -160,7 +145,6 @@ async def send_subscription_overdue_reminders(context: ContextTypes.DEFAULT_TYPE
             continue
 
         overdue_days = (today - subscription_end_date).days
-
         if overdue_days <= 0:
             continue
 
@@ -170,7 +154,7 @@ async def send_subscription_overdue_reminders(context: ContextTypes.DEFAULT_TYPE
             await context.bot.send_message(
                 chat_id=user_id,
                 text=message_text,
-                reply_markup=reply_markup
+                reply_markup=reply_markup,
             )
             sent_count += 1
         except Exception as e:
@@ -179,55 +163,9 @@ async def send_subscription_overdue_reminders(context: ContextTypes.DEFAULT_TYPE
     print(f"Отправлено напоминаний о просроченном окончании абонемента: {sent_count}")
 
 
-async def send_unpaid_reminders(context: ContextTypes.DEFAULT_TYPE):
-    today = datetime.now(TIMEZONE).date()
-    subscriptions = get_unpaid_subscriptions_with_users(today)
-
-    if not subscriptions:
-        print("Нет игроков с просроченной оплатой.")
-        return
-
-    sent_count = 0
-    reply_markup = get_payment_keyboard()
-
-    for (
-        user_id,
-        username,
-        first_name,
-        payment_day,
-        subscription_type,
-        subscription_end_date,
-        last_payment_date,
-        is_paid_current_period,
-        _has_custom_schedule,
-        payment_claimed,
-    ) in subscriptions:
-        if not is_broadcast_recipient(user_id):
-            continue
-
-        overdue_days = today.day - payment_day
-
-        if overdue_days <= 0:
-            continue
-
-        message_text = build_payment_reminder_message()
-
-        try:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=message_text,
-                reply_markup=reply_markup
-            )
-            sent_count += 1
-        except Exception as e:
-            print(f"Не удалось отправить напоминание об оплате игроку {user_id}: {e}")
-
-    print(f"Отправлено напоминаний об оплате: {sent_count}")
-
-
 async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
     today = datetime.now(TIMEZONE).date()
-    subscriptions = get_unpaid_subscriptions_with_users(today)
+    subscriptions = get_payment_due_today_with_users(today)
 
     if not subscriptions:
         return 0, 0
@@ -256,7 +194,7 @@ async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=user_id,
                 text=message_text,
-                reply_markup=reply_markup
+                reply_markup=reply_markup,
             )
             success_count += 1
         except Exception as e:
@@ -267,29 +205,44 @@ async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
 
 
 def schedule_daily_payment_jobs(application):
-    existing_ending_jobs = application.job_queue.get_jobs_by_name("subscription_ending_reminders")
-    if not existing_ending_jobs:
-        application.job_queue.run_repeating(
+    # Напоминания о скором окончании абонемента — ТОЧНЫЕ ЧАСЫ
+    reminder_schedule = [
+        ("subscription_end_reminders_5d", time(12, 0, tzinfo=TIMEZONE), {5}),
+        ("subscription_end_reminders_4d", time(12, 0, tzinfo=TIMEZONE), {4}),
+        ("subscription_end_reminders_3d_10", time(10, 0, tzinfo=TIMEZONE), {3}),
+        ("subscription_end_reminders_3d_15", time(15, 0, tzinfo=TIMEZONE), {3}),
+        ("subscription_end_reminders_3d_20", time(20, 0, tzinfo=TIMEZONE), {3}),
+        ("subscription_end_reminders_2d_09", time(9, 0, tzinfo=TIMEZONE), {2}),
+        ("subscription_end_reminders_2d_11", time(11, 0, tzinfo=TIMEZONE), {2}),
+        ("subscription_end_reminders_2d_13", time(13, 0, tzinfo=TIMEZONE), {2}),
+        ("subscription_end_reminders_2d_15", time(15, 0, tzinfo=TIMEZONE), {2}),
+        ("subscription_end_reminders_2d_18", time(18, 0, tzinfo=TIMEZONE), {2}),
+        ("subscription_end_reminders_2d_21", time(21, 0, tzinfo=TIMEZONE), {2}),
+        ("subscription_end_reminders_1d_09", time(9, 0, tzinfo=TIMEZONE), {1}),
+        ("subscription_end_reminders_1d_11", time(11, 0, tzinfo=TIMEZONE), {1}),
+        ("subscription_end_reminders_1d_13", time(13, 0, tzinfo=TIMEZONE), {1}),
+        ("subscription_end_reminders_1d_15", time(15, 0, tzinfo=TIMEZONE), {1}),
+        ("subscription_end_reminders_1d_18", time(18, 0, tzinfo=TIMEZONE), {1}),
+        ("subscription_end_reminders_1d_21", time(21, 0, tzinfo=TIMEZONE), {1}),
+    ]
+
+    for job_name, job_time, job_days in reminder_schedule:
+        existing_jobs = application.job_queue.get_jobs_by_name(job_name)
+        if existing_jobs:
+            continue
+
+        application.job_queue.run_daily(
             send_subscription_ending_reminders,
-            interval=60 * 60,
-            first=10,
-            name="subscription_ending_reminders",
+            time=job_time,
+            data={"days": job_days},
+            name=job_name,
         )
 
+    # Просрочка — 1 раз в день
     existing_overdue_jobs = application.job_queue.get_jobs_by_name("subscription_overdue_reminders")
     if not existing_overdue_jobs:
-        application.job_queue.run_repeating(
+        application.job_queue.run_daily(
             send_subscription_overdue_reminders,
-            interval=PAYMENT_REMINDER_REPEAT_MINUTES * 60,
-            first=10,
+            time=time(12, 30, tzinfo=TIMEZONE),
             name="subscription_overdue_reminders",
-        )
-
-    existing_unpaid_jobs = application.job_queue.get_jobs_by_name("unpaid_payment_reminders")
-    if not existing_unpaid_jobs:
-        application.job_queue.run_repeating(
-            send_unpaid_reminders,
-            interval=PAYMENT_REMINDER_REPEAT_MINUTES * 60,
-            first=10,
-            name="unpaid_payment_reminders",
         )
