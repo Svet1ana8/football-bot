@@ -24,11 +24,22 @@ from app.services.access import is_broadcast_recipient
 from app.utils.dates import get_month_name_prepositional
 
 
+TRAINING_WEEKDAYS = {0, 2, 4}  # Пн, Ср, Пт
+
+
 def build_training_message() -> str:
     return (
         f"Сегодня тренировка в {TRAINING_TIME}.\n"
         f"Локация: {TRAINING_LOCATION_URL}\n"
-        "Пожалуйста, ответь, придёшь ли ты."
+        "Контрольный вопрос: ты точно придёшь на тренировку?"
+    )
+
+
+def build_evening_training_message() -> str:
+    return (
+        f"Сегодня тренировка в {TRAINING_TIME}.\n"
+        f"Локация: {TRAINING_LOCATION_URL}\n"
+        "Контрольный вопрос: твои планы не изменились?"
     )
 
 
@@ -58,6 +69,10 @@ def get_today_stop_at() -> datetime:
     return datetime.combine(now.date(), time(hour, minute), tzinfo=TIMEZONE)
 
 
+def is_training_day(now: datetime) -> bool:
+    return now.weekday() in TRAINING_WEEKDAYS
+
+
 async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE):
     approved_users = get_users_by_status("approved")
     month_name = get_month_name_prepositional(datetime.now(TIMEZONE))
@@ -83,13 +98,23 @@ async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE
 
 
 async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE):
-    active_training = get_active_training()
     now = datetime.now(TIMEZONE)
 
+    if not is_training_day(now):
+        return None
+
+    active_training = get_active_training()
+
+    # Если старая тренировка зависла до прошлого дня/времени — закрываем
     if active_training:
         training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
-        if stop_at > now:
-            return None
+
+        if stop_at and now >= stop_at:
+            deactivate_training(training_id)
+        else:
+            # Сегодняшняя активная тренировка уже есть — новую не создаём
+            if start_time and start_time.astimezone(TIMEZONE).date() == now.date():
+                return None
 
     message_text = build_training_message()
     stop_at = get_today_stop_at()
@@ -120,12 +145,23 @@ async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             fail_count += 1
 
+    print(f"Training #{training_id} started automatically. Sent: {success_count}, failed: {fail_count}")
+
     return {
         "training_id": training_id,
         "success_count": success_count,
         "fail_count": fail_count,
         "stop_at": stop_at,
     }
+
+
+async def auto_start_training_job(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now(TIMEZONE)
+
+    if not is_training_day(now):
+        return
+
+    await start_training_reminder(context)
 
 
 async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
@@ -135,6 +171,9 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
 
     training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
     now = datetime.now(TIMEZONE)
+
+    if not is_training_day(now):
+        return
 
     if now >= stop_at:
         deactivate_training(training_id)
@@ -166,6 +205,46 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
 
     update_training_last_reminder(training_id, now)
     print(f"Training #{training_id}: repeated reminder sent to {sent_count} players.")
+
+
+async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now(TIMEZONE)
+
+    if not is_training_day(now):
+        return
+
+    active_training = get_active_training()
+    if not active_training:
+        return
+
+    training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
+
+    if now >= stop_at:
+        return
+
+    responses = get_training_responses(training_id)
+    if not responses:
+        return
+
+    sent_count = 0
+    keyboard = get_change_answer_keyboard(training_id)
+    evening_message = build_evening_training_message()
+
+    for user_id, username, first_name, response in responses:
+        if not is_broadcast_recipient(user_id):
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=evening_message,
+                reply_markup=keyboard,
+            )
+            sent_count += 1
+        except Exception as e:
+            print(f"Ошибка контрольного напоминания игроку {user_id}: {e}")
+
+    print(f"Training #{training_id}: evening confirmation sent to {sent_count} players.")
 
 
 def save_player_training_response(training_id: int, user_id: int, username: str | None, first_name: str | None, response: str):
@@ -236,6 +315,30 @@ def schedule_training_repeat_job(application):
         interval=timedelta(minutes=TRAINING_REMINDER_REPEAT_MINUTES),
         first=timedelta(minutes=TRAINING_REMINDER_REPEAT_MINUTES),
         name="training_repeat_job",
+    )
+
+
+def schedule_training_auto_start_job(application):
+    existing_jobs = application.job_queue.get_jobs_by_name("training_auto_start_job")
+    if existing_jobs:
+        return
+
+    application.job_queue.run_daily(
+        auto_start_training_job,
+        time=time(10, 0, tzinfo=TIMEZONE),
+        name="training_auto_start_job",
+    )
+
+
+def schedule_training_evening_confirmation_job(application):
+    existing_jobs = application.job_queue.get_jobs_by_name("training_evening_confirmation_job")
+    if existing_jobs:
+        return
+
+    application.job_queue.run_daily(
+        evening_training_confirmation_job,
+        time=time(18, 0, tzinfo=TIMEZONE),
+        name="training_evening_confirmation_job",
     )
 
 
