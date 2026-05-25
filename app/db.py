@@ -33,6 +33,11 @@ def init_db():
             """)
 
             cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_trainings_active_start_time
+                ON trainings (is_active, start_time DESC)
+            """)
+
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS training_schedule (
                     id SERIAL PRIMARY KEY,
                     training_date DATE NOT NULL,
@@ -43,9 +48,9 @@ def init_db():
                 )
             """)
 
-            cur.execute("""
-                DROP TABLE IF EXISTS training_responses
-            """)
+            # ВАЖНО:
+            # Нельзя делать DROP/TRUNCATE training_responses в production.
+            # Иначе ответы игроков будут удаляться при запуске/рестарте бота.
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS training_responses (
@@ -54,8 +59,53 @@ def init_db():
                     username TEXT,
                     first_name TEXT,
                     response TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     PRIMARY KEY (training_id, user_id)
                 )
+            """)
+
+            # Миграции для уже существующей таблицы training_responses.
+            # Если таблица уже была создана раньше без этих колонок — они добавятся безопасно.
+            cur.execute("""
+                ALTER TABLE training_responses
+                ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            """)
+
+            cur.execute("""
+                ALTER TABLE training_responses
+                ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            """)
+
+            # Защита от случайных значений response.
+            # NOT VALID не ломает старт, если в старой базе уже есть мусорные значения,
+            # но новые/обновляемые строки всё равно будут проверяться.
+            cur.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM information_schema.table_constraints
+                    WHERE table_schema = 'public'
+                      AND table_name = 'training_responses'
+                      AND constraint_name = 'training_responses_response_check'
+                ) THEN
+                    ALTER TABLE training_responses
+                    ADD CONSTRAINT training_responses_response_check
+                    CHECK (response IN ('yes', 'no')) NOT VALID;
+                END IF;
+            END
+            $$;
+            """)
+
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_training_responses_training_id
+                ON training_responses (training_id)
+            """)
+
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_training_responses_user_id
+                ON training_responses (user_id)
             """)
 
             cur.execute(f"""
@@ -87,16 +137,6 @@ def init_db():
             """)
 
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS payment_history (
-                    id SERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-                    action TEXT NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    comment TEXT
-                )
-            """)
-
-            cur.execute("""
                 ALTER TABLE player_subscriptions
                 ADD COLUMN IF NOT EXISTS full_attendance_bonus BOOLEAN NOT NULL DEFAULT FALSE
             """)
@@ -104,6 +144,16 @@ def init_db():
             cur.execute("""
                 ALTER TABLE player_subscriptions
                 ADD COLUMN IF NOT EXISTS referral_bonus BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS payment_history (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+                    action TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    comment TEXT
+                )
             """)
 
         conn.commit()
