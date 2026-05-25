@@ -262,9 +262,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response="yes"
         )
 
+        current_text = query.message.text or ""
+
         await query.answer("Ответ сохранён")
         await query.edit_message_text(
-            "✅ Ты отметил(а), что придёшь на тренировку.",
+            text=(
+                f"{current_text}\n\n"
+                "✅ Ты отметил(а), что придёшь на тренировку."
+            ),
             reply_markup=get_change_answer_keyboard(training_id)
         )
         return
@@ -283,9 +288,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response="no"
         )
 
+        current_text = query.message.text or ""
+
         await query.answer("Ответ сохранён")
         await query.edit_message_text(
-            "❌ Ты отметил(а), что не придёшь на тренировку.",
+            text=(
+                f"{current_text}\n\n"
+                "❌ Ты отметил(а), что не придёшь на тренировку."
+            ),
             reply_markup=get_change_answer_keyboard(training_id)
         )
         return
