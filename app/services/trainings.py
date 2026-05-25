@@ -17,6 +17,7 @@ from app.repositories.trainings import (
     get_training_responses,
     get_user_response_for_training,
     save_training_response,
+    update_training_coach_report_time,
     update_training_day_no_response_reminder,
     update_training_last_confirmation,
     update_training_last_reminder,
@@ -53,6 +54,43 @@ TRAINING_DAY_NO_RESPONSE_REPEAT_MINUTES = 60
 TRAINING_CONFIRMATION_START_TIME = time(18, 0)
 TRAINING_CONFIRMATION_END_TIME = time(18, 59)
 
+# Авто-отчёт тренеру в день тренировки:
+# окно 19:00–19:59, чтобы не пропустить,
+# если бот/сервер проснулся не ровно в 19:00.
+TRAINING_COACH_REPORT_START_TIME = time(19, 0)
+TRAINING_COACH_REPORT_END_TIME = time(19, 59)
+
+
+def get_coach_ids_from_config() -> list[int]:
+    """
+    Берём список тренеров из app.config.COACH_IDS.
+
+    Сделано через внутренний импорт, чтобы не сломать запуск,
+    если в config.py переменная пока называется иначе или отсутствует.
+    """
+    try:
+        from app.config import COACH_IDS
+    except ImportError:
+        return []
+
+    if not COACH_IDS:
+        return []
+
+    if isinstance(COACH_IDS, str):
+        raw_ids = COACH_IDS.replace(";", ",").split(",")
+    else:
+        raw_ids = COACH_IDS
+
+    coach_ids = []
+
+    for raw_id in raw_ids:
+        try:
+            coach_ids.append(int(str(raw_id).strip()))
+        except (TypeError, ValueError):
+            continue
+
+    return coach_ids
+
 
 def unpack_training(active_training):
     """
@@ -69,6 +107,7 @@ def unpack_training(active_training):
     7 - is_custom
     8 - created_by_user_id
     9 - last_training_day_no_response_reminder_time
+    10 - last_coach_report_time
     """
     if not active_training:
         return None
@@ -84,6 +123,7 @@ def unpack_training(active_training):
         "is_custom": active_training[7] if len(active_training) > 7 else False,
         "created_by_user_id": active_training[8] if len(active_training) > 8 else None,
         "last_training_day_no_response_reminder_time": active_training[9] if len(active_training) > 9 else None,
+        "last_coach_report_time": active_training[10] if len(active_training) > 10 else None,
     }
 
 
@@ -198,6 +238,14 @@ def is_within_confirmation_window(now: datetime) -> bool:
     return TRAINING_CONFIRMATION_START_TIME <= now.time() <= TRAINING_CONFIRMATION_END_TIME
 
 
+def is_within_coach_report_window(now: datetime) -> bool:
+    """
+    Авто-отчёт тренеру отправляется в день тренировки
+    в окне 19:00–19:59.
+    """
+    return TRAINING_COACH_REPORT_START_TIME <= now.time() <= TRAINING_COACH_REPORT_END_TIME
+
+
 def is_confirmation_day_for_active_training(start_time: datetime, now: datetime) -> bool:
     """
     Проверяет, что сегодня день активной тренировки.
@@ -256,8 +304,8 @@ def was_auto_reminder_sent_recently(last_reminder_time: datetime | None, now: da
     Авто-напоминание за день до тренировки должно уходить каждый час.
 
     Проверяем last_reminder_time только для auto_day_before.
-    Ручная кнопка тренера, напоминание неответившим и контрольное подтверждение
-    это поле не трогают.
+    Ручная кнопка тренера, напоминание неответившим, контрольное подтверждение
+    и авто-отчёт тренеру это поле не трогают.
     """
     if not last_reminder_time:
         return False
@@ -278,6 +326,7 @@ def was_training_day_no_response_reminder_sent_recently(
     Это отдельное поле, чтобы не конфликтовать с:
     - last_reminder_time для авто-напоминаний за день до тренировки;
     - last_confirmation_time для контрольного подтверждения в 18:00;
+    - last_coach_report_time для авто-отчёта тренеру;
     - ручной кнопкой тренера.
     """
     if not last_reminder_time:
@@ -299,6 +348,19 @@ def was_confirmation_sent_today(training, now: datetime) -> bool:
         return False
 
     last_local = last_confirmation_time.astimezone(TIMEZONE)
+    return last_local.date() == now.date()
+
+
+def was_coach_report_sent_today(training, now: datetime) -> bool:
+    """
+    Авто-отчёт тренеру должен уходить один раз в день тренировки.
+    """
+    last_report_time = training.get("last_coach_report_time")
+
+    if not last_report_time:
+        return False
+
+    last_local = last_report_time.astimezone(TIMEZONE)
     return last_local.date() == now.date()
 
 
@@ -372,6 +434,77 @@ def build_evening_training_message() -> str:
         "Контрольное подтверждение:\n"
         "Ты сегодня точно будешь на тренировке? 😅"
     )
+
+
+def build_coach_training_report_text(training) -> str:
+    """
+    Собирает авто-отчёт тренеру по активной тренировке.
+    """
+    training_id = training["id"]
+    start_time = training["start_time"]
+
+    approved_users = [
+        row for row in get_users_by_status("approved")
+        if is_broadcast_recipient(row[0])
+    ]
+
+    responses = get_training_responses(training_id)
+
+    response_map = {
+        user_id: response
+        for user_id, username, first_name, response in responses
+    }
+
+    coming = []
+    not_coming = []
+    no_response = []
+
+    for user_id, username, first_name in approved_users:
+        name = first_name or str(user_id)
+
+        if username:
+            name += f" (@{username})"
+
+        response = response_map.get(user_id)
+
+        if response == "yes":
+            coming.append(name)
+        elif response == "no":
+            not_coming.append(name)
+        else:
+            no_response.append(name)
+
+    start_local = start_time.astimezone(TIMEZONE) if start_time else None
+
+    if start_local:
+        training_date_text = start_local.strftime("%d.%m.%Y")
+        training_time_text = start_local.strftime("%H:%M")
+    else:
+        training_date_text = "сегодня"
+        training_time_text = str(TRAINING_TIME)
+
+    text = (
+        f"📊 Итог по тренировке {training_date_text} в {training_time_text}\n\n"
+        f"✅ Придут: {len(coming)}\n"
+        f"❌ Не придут: {len(not_coming)}\n"
+        f"⏳ Не ответили: {len(no_response)}\n"
+    )
+
+    if coming:
+        text += "\n✅ Придут:\n"
+        text += "\n".join(f"- {name}" for name in coming)
+
+    if not_coming:
+        text += "\n\n❌ Не придут:\n"
+        text += "\n".join(f"- {name}" for name in not_coming)
+
+    if no_response:
+        text += "\n\n⏳ Не ответили:\n"
+        text += "\n".join(f"- {name}" for name in no_response)
+    else:
+        text += "\n\nВсе игроки ответили ✅"
+
+    return text
 
 
 def get_training_keyboard(training_id: int):
@@ -573,6 +706,7 @@ async def send_training_day_no_response_reminder(context: ContextTypes.DEFAULT_T
     - только тем, у кого нет ответа в training_responses;
     - не конфликтует с авто-напоминаниями за день до тренировки;
     - не конфликтует с контрольным подтверждением в 18:00;
+    - не конфликтует с авто-отчётом тренеру в 19:00;
     - не трогает ручную кнопку тренера.
     """
     now = datetime.now(TIMEZONE)
@@ -655,6 +789,86 @@ async def send_training_day_no_response_reminder(context: ContextTypes.DEFAULT_T
     }
 
 
+async def send_coach_training_report(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Авто-отчёт тренеру перед тренировкой.
+
+    Правило:
+    - только в день активной тренировки;
+    - только в окне 19:00–19:59;
+    - только один раз в день на конкретную тренировку;
+    - игрокам ничего не отправляет;
+    - старые голосования и ответы не трогает.
+    """
+    now = datetime.now(TIMEZONE)
+
+    if not is_within_coach_report_window(now):
+        return None
+
+    active_training = get_active_training()
+
+    if not active_training:
+        return None
+
+    training = unpack_training(active_training)
+
+    if not training:
+        return None
+
+    training_id = training["id"]
+    start_time = training["start_time"]
+
+    if not start_time:
+        return None
+
+    if not is_confirmation_day_for_active_training(start_time, now):
+        return None
+
+    if was_coach_report_sent_today(training, now):
+        return None
+
+    coach_ids = get_coach_ids_from_config()
+
+    if not coach_ids:
+        print("COACH_IDS is empty or not configured. Coach training report was not sent.")
+        return None
+
+    text = build_coach_training_report_text(training)
+
+    success_count = 0
+    fail_count = 0
+
+    for coach_id in coach_ids:
+        try:
+            await context.bot.send_message(
+                chat_id=coach_id,
+                text=text,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Ошибка отправки авто-отчёта тренеру {coach_id}: {e}")
+            fail_count += 1
+
+    if success_count > 0:
+        update_training_coach_report_time(training_id, now)
+
+        create_training_reminder_log(
+            training_id=training_id,
+            reminder_type="coach_training_report",
+        )
+
+    print(
+        f"Training #{training_id}: coach report sent to "
+        f"{success_count} coaches, failed: {fail_count}."
+    )
+
+    return {
+        "training_id": training_id,
+        "success_count": success_count,
+        "fail_count": fail_count,
+    }
+
+
 async def send_manual_training_reminder(
     context: ContextTypes.DEFAULT_TYPE,
     coach_user_id: int | None = None,
@@ -666,9 +880,11 @@ async def send_manual_training_reminder(
     - НЕ обновляет last_reminder_time;
     - НЕ обновляет last_confirmation_time;
     - НЕ обновляет last_training_day_no_response_reminder_time;
+    - НЕ обновляет last_coach_report_time;
     - НЕ очищает training_responses;
     - НЕ мешает авто-напоминанию;
-    - НЕ мешает контрольному подтверждению.
+    - НЕ мешает контрольному подтверждению;
+    - НЕ мешает авто-отчёту тренеру.
     """
     now = datetime.now(TIMEZONE)
     training, created = get_or_create_training_for_manual_reminder(now)
@@ -853,10 +1069,14 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
     2. В день тренировки:
        напоминание тем, кто не ответил, с 09:00 до 17:30 каждый час.
 
-    Эти две логики используют разные поля в БД и не конфликтуют.
+    3. В день тренировки:
+       авто-отчёт тренеру с итогами в 19:00–19:59.
+
+    Эти логики используют разные поля в БД и не конфликтуют.
     """
     await send_auto_training_reminder(context)
     await send_training_day_no_response_reminder(context)
+    await send_coach_training_report(context)
 
 
 async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
@@ -1022,8 +1242,8 @@ def schedule_training_repeat_job(application):
         return
 
     # Проверяем каждые 5 минут, чтобы не пропустить окно после рестарта.
-    # Фактическая отправка авто-напоминаний и напоминаний неответившим
-    # всё равно ограничена 1 разом в час.
+    # Фактическая отправка авто-напоминаний, напоминаний неответившим
+    # и авто-отчёта тренеру ограничена отдельными полями в БД.
     application.job_queue.run_repeating(
         repeat_training_reminder_job,
         interval=timedelta(minutes=5),
@@ -1083,6 +1303,7 @@ def build_training_status_text(application) -> str:
     last_no_response_reminder_time = training.get(
         "last_training_day_no_response_reminder_time"
     )
+    last_coach_report_time = training.get("last_coach_report_time")
 
     approved_users = [
         row for row in get_users_by_status("approved")
@@ -1108,6 +1329,11 @@ def build_training_status_text(application) -> str:
     last_no_response_reminder_local = (
         last_no_response_reminder_time.astimezone(TIMEZONE)
         if last_no_response_reminder_time
+        else None
+    )
+    last_coach_report_local = (
+        last_coach_report_time.astimezone(TIMEZONE)
+        if last_coach_report_time
         else None
     )
 
@@ -1141,6 +1367,12 @@ def build_training_status_text(application) -> str:
         else "не было"
     )
 
+    last_coach_report_text = (
+        last_coach_report_local.strftime("%d.%m.%Y %H:%M")
+        if last_coach_report_local
+        else "не было"
+    )
+
     status_text = "активно" if is_active else "завершено"
     training_type_text = "нестандартная" if is_custom else "стандартная"
     next_run_text = "недоступен"
@@ -1170,6 +1402,7 @@ def build_training_status_text(application) -> str:
         f"Напоминание неответившим: {last_no_response_reminder_text}\n"
         f"Авто-напоминания до: {stop_at_text}\n"
         f"Контрольное подтверждение: {last_confirmation_text}\n"
+        f"Авто-отчёт тренеру: {last_coach_report_text}\n"
         f"Следующий авто-повтор: {next_run_text}\n\n"
         f"Всего игроков: {total_players}\n"
         f"Ответили: {answered_count}\n"

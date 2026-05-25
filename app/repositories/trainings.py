@@ -27,6 +27,11 @@ def ensure_training_repository_schema():
 
             cur.execute("""
                 ALTER TABLE trainings
+                ADD COLUMN IF NOT EXISTS last_coach_report_time TIMESTAMPTZ
+            """)
+
+            cur.execute("""
+                ALTER TABLE trainings
                 ADD COLUMN IF NOT EXISTS is_custom BOOLEAN NOT NULL DEFAULT FALSE
             """)
 
@@ -137,13 +142,14 @@ def create_training(
                     is_active,
                     last_confirmation_time,
                     last_training_day_no_response_reminder_time,
+                    last_coach_report_time,
                     is_custom,
                     created_by_user_id,
                     cancelled_at,
                     cancelled_by_user_id,
                     cancel_reason
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL)
                 RETURNING id
             """, (
                 message_text,
@@ -151,6 +157,7 @@ def create_training(
                 None,
                 stop_at,
                 True,
+                None,
                 None,
                 None,
                 is_custom,
@@ -179,6 +186,7 @@ def get_active_training():
     7 - is_custom
     8 - created_by_user_id
     9 - last_training_day_no_response_reminder_time
+    10 - last_coach_report_time
     """
     ensure_training_repository_schema()
 
@@ -195,7 +203,8 @@ def get_active_training():
                     last_confirmation_time,
                     is_custom,
                     created_by_user_id,
-                    last_training_day_no_response_reminder_time
+                    last_training_day_no_response_reminder_time,
+                    last_coach_report_time
                 FROM trainings
                 WHERE is_active = TRUE
                 ORDER BY id DESC
@@ -211,7 +220,8 @@ def update_training_last_reminder(training_id: int, reminder_time: datetime):
     Важно:
     - ручная кнопка тренера НЕ должна вызывать эту функцию;
     - контрольное подтверждение НЕ должно вызывать эту функцию;
-    - напоминание неответившим в день тренировки НЕ должно вызывать эту функцию.
+    - напоминание неответившим в день тренировки НЕ должно вызывать эту функцию;
+    - авто-отчёт тренеру НЕ должен вызывать эту функцию.
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -258,6 +268,7 @@ def update_training_day_no_response_reminder(training_id: int, reminder_time: da
     Важно:
     - не трогает last_reminder_time;
     - не трогает last_confirmation_time;
+    - не трогает last_coach_report_time;
     - не конфликтует с ручной кнопкой тренера;
     - не удаляет ответы.
     """
@@ -271,6 +282,35 @@ def update_training_day_no_response_reminder(training_id: int, reminder_time: da
                 WHERE id = %s
             """, (
                 reminder_time,
+                training_id,
+            ))
+
+        conn.commit()
+
+
+def update_training_coach_report_time(training_id: int, report_time: datetime):
+    """
+    Обновляет время последнего авто-отчёта тренеру.
+
+    Нужно, чтобы в день тренировки отчёт в 19:00–19:59
+    не отправлялся повторно при каждой проверке job.
+
+    Важно:
+    - не трогает last_reminder_time;
+    - не трогает last_confirmation_time;
+    - не трогает last_training_day_no_response_reminder_time;
+    - не удаляет ответы игроков.
+    """
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE trainings
+                SET last_coach_report_time = %s
+                WHERE id = %s
+            """, (
+                report_time,
                 training_id,
             ))
 
@@ -349,6 +389,7 @@ def create_training_reminder_log(
     - auto_day_before
     - training_day_no_response
     - training_day_confirmation
+    - coach_training_report
     - manual_coach
     - custom_training_created
     - training_cancelled
