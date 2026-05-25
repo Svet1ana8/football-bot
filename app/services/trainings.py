@@ -25,6 +25,7 @@ from app.utils.dates import get_month_name_prepositional
 
 
 TRAINING_WEEKDAYS = {0, 2, 4}  # Пн, Ср, Пт
+TRAINING_AUTO_START_TIME = time(10, 0)
 
 
 def build_training_message() -> str:
@@ -73,6 +74,24 @@ def is_training_day(now: datetime) -> bool:
     return now.weekday() in TRAINING_WEEKDAYS
 
 
+def is_after_training_auto_start(now: datetime) -> bool:
+    return now.time().hour > TRAINING_AUTO_START_TIME.hour or (
+        now.time().hour == TRAINING_AUTO_START_TIME.hour and
+        now.time().minute >= TRAINING_AUTO_START_TIME.minute
+    )
+
+
+def is_today_training_active(active_training) -> bool:
+    if not active_training:
+        return False
+
+    training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
+    if not start_time:
+        return False
+
+    return start_time.astimezone(TIMEZONE).date() == datetime.now(TIMEZONE).date() and is_active
+
+
 async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE):
     approved_users = get_users_by_status("approved")
     month_name = get_month_name_prepositional(datetime.now(TIMEZONE))
@@ -105,14 +124,12 @@ async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE):
 
     active_training = get_active_training()
 
-    # Если старая тренировка зависла до прошлого дня/времени — закрываем
     if active_training:
         training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
 
         if stop_at and now >= stop_at:
             deactivate_training(training_id)
         else:
-            # Сегодняшняя активная тренировка уже есть — новую не создаём
             if start_time and start_time.astimezone(TIMEZONE).date() == now.date():
                 return None
 
@@ -155,6 +172,23 @@ async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE):
     }
 
 
+async def ensure_training_started_if_needed(context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now(TIMEZONE)
+
+    if not is_training_day(now):
+        return
+
+    if not is_after_training_auto_start(now):
+        return
+
+    active_training = get_active_training()
+
+    if is_today_training_active(active_training):
+        return
+
+    await start_training_reminder(context)
+
+
 async def auto_start_training_job(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TIMEZONE)
 
@@ -165,6 +199,8 @@ async def auto_start_training_job(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
+    await ensure_training_started_if_needed(context)
+
     active_training = get_active_training()
     if not active_training:
         return
@@ -208,6 +244,8 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
+    await ensure_training_started_if_needed(context)
+
     now = datetime.now(TIMEZONE)
 
     if not is_training_day(now):
