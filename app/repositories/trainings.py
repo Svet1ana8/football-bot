@@ -22,6 +22,11 @@ def ensure_training_repository_schema():
 
             cur.execute("""
                 ALTER TABLE trainings
+                ADD COLUMN IF NOT EXISTS last_training_day_no_response_reminder_time TIMESTAMPTZ
+            """)
+
+            cur.execute("""
+                ALTER TABLE trainings
                 ADD COLUMN IF NOT EXISTS is_custom BOOLEAN NOT NULL DEFAULT FALSE
             """)
 
@@ -131,13 +136,14 @@ def create_training(
                     stop_at,
                     is_active,
                     last_confirmation_time,
+                    last_training_day_no_response_reminder_time,
                     is_custom,
                     created_by_user_id,
                     cancelled_at,
                     cancelled_by_user_id,
                     cancel_reason
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL)
                 RETURNING id
             """, (
                 message_text,
@@ -145,6 +151,7 @@ def create_training(
                 None,
                 stop_at,
                 True,
+                None,
                 None,
                 is_custom,
                 created_by_user_id,
@@ -171,6 +178,7 @@ def get_active_training():
     6 - last_confirmation_time
     7 - is_custom
     8 - created_by_user_id
+    9 - last_training_day_no_response_reminder_time
     """
     ensure_training_repository_schema()
 
@@ -186,7 +194,8 @@ def get_active_training():
                     is_active,
                     last_confirmation_time,
                     is_custom,
-                    created_by_user_id
+                    created_by_user_id,
+                    last_training_day_no_response_reminder_time
                 FROM trainings
                 WHERE is_active = TRUE
                 ORDER BY id DESC
@@ -201,7 +210,8 @@ def update_training_last_reminder(training_id: int, reminder_time: datetime):
 
     Важно:
     - ручная кнопка тренера НЕ должна вызывать эту функцию;
-    - контрольное подтверждение НЕ должно вызывать эту функцию.
+    - контрольное подтверждение НЕ должно вызывать эту функцию;
+    - напоминание неответившим в день тренировки НЕ должно вызывать эту функцию.
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -234,6 +244,33 @@ def update_training_last_confirmation(training_id: int, confirmation_time: datet
                 WHERE id = %s
             """, (
                 confirmation_time,
+                training_id,
+            ))
+
+        conn.commit()
+
+
+def update_training_day_no_response_reminder(training_id: int, reminder_time: datetime):
+    """
+    Обновляет время последнего напоминания в день тренировки
+    для тех, кто не ответил на первичное голосование.
+
+    Важно:
+    - не трогает last_reminder_time;
+    - не трогает last_confirmation_time;
+    - не конфликтует с ручной кнопкой тренера;
+    - не удаляет ответы.
+    """
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE trainings
+                SET last_training_day_no_response_reminder_time = %s
+                WHERE id = %s
+            """, (
+                reminder_time,
                 training_id,
             ))
 
@@ -310,6 +347,7 @@ def create_training_reminder_log(
 
     Типы:
     - auto_day_before
+    - training_day_no_response
     - training_day_confirmation
     - manual_coach
     - custom_training_created

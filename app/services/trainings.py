@@ -17,6 +17,7 @@ from app.repositories.trainings import (
     get_training_responses,
     get_user_response_for_training,
     save_training_response,
+    update_training_day_no_response_reminder,
     update_training_last_confirmation,
     update_training_last_reminder,
 )
@@ -39,6 +40,13 @@ TRAINING_AUTO_START_TIME = time(9, 0)
 TRAINING_REPEAT_END_TIME = time(23, 0)
 AUTO_REMINDER_REPEAT_MINUTES = 60
 
+# В день тренировки:
+# тем, кто не ответил на первичное голосование,
+# напоминаем каждый час с 09:00 до 17:30.
+TRAINING_DAY_NO_RESPONSE_START_TIME = time(9, 0)
+TRAINING_DAY_NO_RESPONSE_END_TIME = time(17, 30)
+TRAINING_DAY_NO_RESPONSE_REPEAT_MINUTES = 60
+
 # Контрольное подтверждение в день тренировки:
 # окно 18:00–18:59, чтобы не пропустить,
 # если бот/сервер проснулся не ровно в 18:00.
@@ -60,6 +68,7 @@ def unpack_training(active_training):
     6 - last_confirmation_time
     7 - is_custom
     8 - created_by_user_id
+    9 - last_training_day_no_response_reminder_time
     """
     if not active_training:
         return None
@@ -74,6 +83,7 @@ def unpack_training(active_training):
         "last_confirmation_time": active_training[6] if len(active_training) > 6 else None,
         "is_custom": active_training[7] if len(active_training) > 7 else False,
         "created_by_user_id": active_training[8] if len(active_training) > 8 else None,
+        "last_training_day_no_response_reminder_time": active_training[9] if len(active_training) > 9 else None,
     }
 
 
@@ -94,6 +104,14 @@ def parse_training_time() -> time:
             continue
 
     return time(21, 0)
+
+
+def format_training_date_time(training_datetime: datetime | None) -> str:
+    if not training_datetime:
+        return f"сегодня в {TRAINING_TIME}"
+
+    training_local = training_datetime.astimezone(TIMEZONE)
+    return training_local.strftime("%d.%m.%Y в %H:%M")
 
 
 def get_today_stop_at() -> datetime:
@@ -146,6 +164,10 @@ def is_training_day(now: datetime) -> bool:
     return now.weekday() in TRAINING_DAYS
 
 
+def is_after_training_auto_start(now: datetime) -> bool:
+    return now.time() >= TRAINING_AUTO_START_TIME
+
+
 def is_within_auto_reminder_window(now: datetime) -> bool:
     """
     Авто-напоминания работают только для стандартного расписания:
@@ -155,6 +177,17 @@ def is_within_auto_reminder_window(now: datetime) -> bool:
         is_vote_day(now)
         and TRAINING_AUTO_START_TIME <= now.time() <= TRAINING_REPEAT_END_TIME
     )
+
+
+def is_within_training_day_no_response_window(now: datetime) -> bool:
+    """
+    В день тренировки напоминаем тем, кто не ответил,
+    с 09:00 до 17:30.
+
+    Работает не по дню недели, а по start_time активной тренировки.
+    Поэтому поддерживает и стандартные тренировки, и нестандартные.
+    """
+    return TRAINING_DAY_NO_RESPONSE_START_TIME <= now.time() <= TRAINING_DAY_NO_RESPONSE_END_TIME
 
 
 def is_within_confirmation_window(now: datetime) -> bool:
@@ -167,9 +200,9 @@ def is_within_confirmation_window(now: datetime) -> bool:
 
 def is_confirmation_day_for_active_training(start_time: datetime, now: datetime) -> bool:
     """
-    Контрольное подтверждение зависит от start_time активной тренировки.
+    Проверяет, что сегодня день активной тренировки.
 
-    Поэтому работает:
+    Работает:
     - для стандартных тренировок Пн/Ср/Пт;
     - для нестандартных тренировок, например воскресенье,
       если тренер вручную создал тренировку на воскресенье.
@@ -181,6 +214,21 @@ def is_confirmation_day_for_active_training(start_time: datetime, now: datetime)
     return start_local.date() == now.date()
 
 
+def is_today_training_active(active_training) -> bool:
+    """
+    Оставлено для совместимости со старым кодом.
+    """
+    data = unpack_training(active_training)
+
+    if not data:
+        return False
+
+    return is_confirmation_day_for_active_training(
+        data["start_time"],
+        datetime.now(TIMEZONE),
+    )
+
+
 def is_active_training_for_vote_day(active_training, now: datetime) -> bool:
     """
     Проверяет, относится ли активная тренировка к текущему дню
@@ -189,6 +237,9 @@ def is_active_training_for_vote_day(active_training, now: datetime) -> bool:
     data = unpack_training(active_training)
 
     if not data:
+        return False
+
+    if data["is_custom"]:
         return False
 
     if not data["start_time"] or not data["is_active"]:
@@ -205,13 +256,35 @@ def was_auto_reminder_sent_recently(last_reminder_time: datetime | None, now: da
     Авто-напоминание за день до тренировки должно уходить каждый час.
 
     Проверяем last_reminder_time только для auto_day_before.
-    Ручная кнопка тренера и контрольное подтверждение это поле не трогают.
+    Ручная кнопка тренера, напоминание неответившим и контрольное подтверждение
+    это поле не трогают.
     """
     if not last_reminder_time:
         return False
 
     last_local = last_reminder_time.astimezone(TIMEZONE)
     next_allowed = last_local + timedelta(minutes=AUTO_REMINDER_REPEAT_MINUTES)
+
+    return now < next_allowed
+
+
+def was_training_day_no_response_reminder_sent_recently(
+    last_reminder_time: datetime | None,
+    now: datetime,
+) -> bool:
+    """
+    Напоминание в день тренировки для неответивших должно уходить каждый час.
+
+    Это отдельное поле, чтобы не конфликтовать с:
+    - last_reminder_time для авто-напоминаний за день до тренировки;
+    - last_confirmation_time для контрольного подтверждения в 18:00;
+    - ручной кнопкой тренера.
+    """
+    if not last_reminder_time:
+        return False
+
+    last_local = last_reminder_time.astimezone(TIMEZONE)
+    next_allowed = last_local + timedelta(minutes=TRAINING_DAY_NO_RESPONSE_REPEAT_MINUTES)
 
     return now < next_allowed
 
@@ -257,19 +330,47 @@ def build_custom_training_message(training_datetime: datetime) -> str:
     )
 
 
-def build_evening_training_message_for_player(previous_response: str | None) -> str:
+def build_training_day_no_response_message(training_datetime: datetime | None = None) -> str:
+    training_text = format_training_date_time(training_datetime)
+
+    return (
+        f"Напоминание о тренировке {training_text}.\n"
+        f"Локация: {TRAINING_LOCATION_URL}\n\n"
+        "Ты ещё не ответил на голосование.\n"
+        "Подскажи, пожалуйста, ты будешь на тренировке?"
+    )
+
+
+def build_evening_training_message_for_player(
+    previous_response: str | None,
+    training_datetime: datetime | None = None,
+) -> str:
+    training_text = format_training_date_time(training_datetime)
+
     if previous_response == "yes":
-        previous_text = "Вчера ты отметил, что придёшь."
+        previous_text = "Ранее ты отметил, что придёшь."
     elif previous_response == "no":
-        previous_text = "Вчера ты отметил, что не придёшь."
+        previous_text = "Ранее ты отметил, что не придёшь."
     else:
         previous_text = "Ты ещё не ответил по этой тренировке."
 
     return (
-        f"Сегодня тренировка в {TRAINING_TIME}.\n"
+        f"Контрольное подтверждение по тренировке {training_text}.\n"
         f"Локация: {TRAINING_LOCATION_URL}\n\n"
         f"{previous_text}\n"
-        "Подтверди, пожалуйста: сегодня точно будешь? 😅"
+        "Подтверди, пожалуйста: ты точно будешь? 😅"
+    )
+
+
+def build_evening_training_message() -> str:
+    """
+    Оставлено для совместимости со старым кодом.
+    """
+    return (
+        f"Сегодня тренировка в {TRAINING_TIME}.\n"
+        f"Локация: {TRAINING_LOCATION_URL}\n\n"
+        "Контрольное подтверждение:\n"
+        "Ты сегодня точно будешь на тренировке? 😅"
     )
 
 
@@ -297,24 +398,26 @@ def get_or_create_training_for_vote_day(now: datetime):
     """
     Возвращает активную тренировку для текущего дня предварительного голосования.
 
-    Если подходящей активной тренировки нет — создаёт новую.
-    Ответы старых тренировок не удаляются.
+    Если подходящей активной стандартной тренировки нет — создаёт новую.
+    Если активна нестандартная тренировка, авто-стандарт её не трогает.
     """
     active_training = get_active_training()
+    active_data = unpack_training(active_training)
+
+    if active_data and active_data["is_custom"]:
+        return None, False
 
     if active_training and is_active_training_for_vote_day(active_training, now):
-        return unpack_training(active_training), False
+        return active_data, False
 
-    if active_training:
-        old_training = unpack_training(active_training)
-        if old_training and old_training["id"]:
-            deactivate_training(old_training["id"])
+    if active_data and active_data["id"]:
+        deactivate_training(active_data["id"])
 
     training_datetime = get_next_training_datetime_from_vote_day(now)
     message_text = build_training_message()
     stop_at = get_today_stop_at()
 
-    training_id = create_training(
+    create_training(
         message_text=message_text,
         start_time=training_datetime,
         stop_at=stop_at,
@@ -352,7 +455,7 @@ def get_or_create_training_for_manual_reminder(now: datetime):
         tzinfo=TIMEZONE,
     )
 
-    training_id = create_training(
+    create_training(
         message_text=message_text,
         start_time=training_datetime,
         stop_at=stop_at,
@@ -396,6 +499,8 @@ async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
     - с 09:00 до 23:00;
     - каждый час;
     - всем игрокам со статусом approved.
+
+    Не трогает нестандартные активные тренировки.
     """
     now = datetime.now(TIMEZONE)
 
@@ -456,6 +561,100 @@ async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
     }
 
 
+async def send_training_day_no_response_reminder(context: ContextTypes.DEFAULT_TYPE):
+    """
+    В день тренировки напоминает тем, кто не ответил на первичное голосование.
+
+    Правило:
+    - только в день активной тренировки;
+    - с 09:00 до 17:30;
+    - каждый час;
+    - только approved игрокам;
+    - только тем, у кого нет ответа в training_responses;
+    - не конфликтует с авто-напоминаниями за день до тренировки;
+    - не конфликтует с контрольным подтверждением в 18:00;
+    - не трогает ручную кнопку тренера.
+    """
+    now = datetime.now(TIMEZONE)
+
+    if not is_within_training_day_no_response_window(now):
+        return None
+
+    active_training = get_active_training()
+
+    if not active_training:
+        return None
+
+    training = unpack_training(active_training)
+
+    if not training:
+        return None
+
+    training_id = training["id"]
+    start_time = training["start_time"]
+
+    if not start_time:
+        return None
+
+    if not is_confirmation_day_for_active_training(start_time, now):
+        return None
+
+    last_no_response_reminder_time = training.get(
+        "last_training_day_no_response_reminder_time"
+    )
+
+    if was_training_day_no_response_reminder_sent_recently(
+        last_no_response_reminder_time,
+        now,
+    ):
+        return None
+
+    approved_users = get_users_by_status("approved")
+    keyboard = get_training_keyboard(training_id)
+    message_text = build_training_day_no_response_message(start_time)
+
+    success_count = 0
+    fail_count = 0
+
+    for user_id, username, first_name in approved_users:
+        if not is_broadcast_recipient(user_id):
+            continue
+
+        existing_response = get_user_response_for_training(training_id, user_id)
+
+        if existing_response:
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=message_text,
+                reply_markup=keyboard,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Ошибка напоминания неответившему игроку {user_id}: {e}")
+            fail_count += 1
+
+    update_training_day_no_response_reminder(training_id, now)
+
+    create_training_reminder_log(
+        training_id=training_id,
+        reminder_type="training_day_no_response",
+    )
+
+    print(
+        f"Training #{training_id}: training day no-response reminder sent to "
+        f"{success_count} players, failed: {fail_count}."
+    )
+
+    return {
+        "training_id": training_id,
+        "success_count": success_count,
+        "fail_count": fail_count,
+    }
+
+
 async def send_manual_training_reminder(
     context: ContextTypes.DEFAULT_TYPE,
     coach_user_id: int | None = None,
@@ -466,6 +665,7 @@ async def send_manual_training_reminder(
     Важно:
     - НЕ обновляет last_reminder_time;
     - НЕ обновляет last_confirmation_time;
+    - НЕ обновляет last_training_day_no_response_reminder_time;
     - НЕ очищает training_responses;
     - НЕ мешает авто-напоминанию;
     - НЕ мешает контрольному подтверждению.
@@ -644,7 +844,19 @@ async def auto_start_training_job(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Единая периодическая проверка.
+
+    1. За день до тренировки:
+       авто-напоминание всем approved игрокам с 09:00 до 23:00 каждый час.
+
+    2. В день тренировки:
+       напоминание тем, кто не ответил, с 09:00 до 17:30 каждый час.
+
+    Эти две логики используют разные поля в БД и не конфликтуют.
+    """
     await send_auto_training_reminder(context)
+    await send_training_day_no_response_reminder(context)
 
 
 async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
@@ -702,7 +914,10 @@ async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
             continue
 
         previous_response = previous_response_map.get(user_id)
-        text = build_evening_training_message_for_player(previous_response)
+        text = build_evening_training_message_for_player(
+            previous_response=previous_response,
+            training_datetime=start_time,
+        )
 
         try:
             await context.bot.send_message(
@@ -807,7 +1022,8 @@ def schedule_training_repeat_job(application):
         return
 
     # Проверяем каждые 5 минут, чтобы не пропустить окно после рестарта.
-    # Фактическая отправка авто-напоминаний всё равно ограничена 1 разом в час.
+    # Фактическая отправка авто-напоминаний и напоминаний неответившим
+    # всё равно ограничена 1 разом в час.
     application.job_queue.run_repeating(
         repeat_training_reminder_job,
         interval=timedelta(minutes=5),
@@ -864,6 +1080,9 @@ def build_training_status_text(application) -> str:
     is_active = training["is_active"]
     last_confirmation_time = training["last_confirmation_time"]
     is_custom = training["is_custom"]
+    last_no_response_reminder_time = training.get(
+        "last_training_day_no_response_reminder_time"
+    )
 
     approved_users = [
         row for row in get_users_by_status("approved")
@@ -884,6 +1103,11 @@ def build_training_status_text(application) -> str:
     last_confirmation_local = (
         last_confirmation_time.astimezone(TIMEZONE)
         if last_confirmation_time
+        else None
+    )
+    last_no_response_reminder_local = (
+        last_no_response_reminder_time.astimezone(TIMEZONE)
+        if last_no_response_reminder_time
         else None
     )
 
@@ -908,6 +1132,12 @@ def build_training_status_text(application) -> str:
     last_confirmation_text = (
         last_confirmation_local.strftime("%d.%m.%Y %H:%M")
         if last_confirmation_local
+        else "не было"
+    )
+
+    last_no_response_reminder_text = (
+        last_no_response_reminder_local.strftime("%d.%m.%Y %H:%M")
+        if last_no_response_reminder_local
         else "не было"
     )
 
@@ -937,6 +1167,7 @@ def build_training_status_text(application) -> str:
         f"Тип: {training_type_text}\n"
         f"Тренировка: {start_time_text}\n"
         f"Последнее авто-напоминание: {last_reminder_text}\n"
+        f"Напоминание неответившим: {last_no_response_reminder_text}\n"
         f"Авто-напоминания до: {stop_at_text}\n"
         f"Контрольное подтверждение: {last_confirmation_text}\n"
         f"Следующий авто-повтор: {next_run_text}\n\n"
