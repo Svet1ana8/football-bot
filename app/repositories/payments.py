@@ -4,11 +4,39 @@ from app.config import DEFAULT_PAYMENT_DAY
 from app.db import get_connection
 
 
+def get_initial_subscription_end_date(today: date, payment_day: int = 28) -> date:
+    if today.day <= payment_day:
+        return date(today.year, today.month, payment_day)
+
+    year = today.year
+    month = today.month + 1
+
+    if month == 13:
+        month = 1
+        year += 1
+
+    return date(year, month, payment_day)
+
+
+def _get_next_subscription_end_date(today: date, payment_day: int = 28) -> date:
+    year = today.year
+    month = today.month + 1
+
+    if month == 13:
+        month = 1
+        year += 1
+
+    return date(year, month, payment_day)
+
+
 def create_subscription_for_user(
     user_id: int,
     payment_day: int = DEFAULT_PAYMENT_DAY,
     subscription_type: str = "monthly"
 ):
+    today = date.today()
+    initial_end_date = get_initial_subscription_end_date(today, payment_day)
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -24,9 +52,9 @@ def create_subscription_for_user(
                     full_attendance_bonus,
                     referral_bonus
                 )
-                VALUES (%s, %s, %s, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE)
+                VALUES (%s, %s, %s, %s, NULL, FALSE, FALSE, FALSE, FALSE, FALSE)
                 ON CONFLICT (user_id) DO NOTHING
-            """, (user_id, payment_day, subscription_type))
+            """, (user_id, payment_day, subscription_type, initial_end_date))
         conn.commit()
 
 
@@ -144,7 +172,7 @@ def get_subscriptions_ending_soon(today: date, days: int = 5):
             return cur.fetchall()
 
 
-def get_unpaid_subscriptions(today: date, days_before: int = 5):
+def get_unpaid_subscriptions(today: date):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -158,25 +186,11 @@ def get_unpaid_subscriptions(today: date, days_before: int = 5):
                     has_custom_schedule,
                     payment_claimed
                 FROM player_subscriptions
-                WHERE is_paid_current_period = FALSE
-                  AND (payment_day - %s) BETWEEN 0 AND %s
+                WHERE payment_day <= %s
+                  AND is_paid_current_period = FALSE
                 ORDER BY payment_day, user_id
-            """, (today.day, days_before))
+            """, (today.day,))
             return cur.fetchall()
-
-
-from datetime import date
-
-
-def _get_next_subscription_end_date(today: date, payment_day: int = 28) -> date:
-    year = today.year
-    month = today.month + 1
-
-    if month == 13:
-        month = 1
-        year += 1
-
-    return date(year, month, payment_day)
 
 
 def confirm_payment(user_id: int, today: date):
@@ -205,7 +219,7 @@ def confirm_payment(user_id: int, today: date):
     return new_end_date
 
 
-def get_unpaid_subscriptions_with_users(today: date, days_before: int = 5):
+def get_payment_due_today_with_users(today: date):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -223,10 +237,35 @@ def get_unpaid_subscriptions_with_users(today: date, days_before: int = 5):
                 FROM player_subscriptions ps
                 JOIN users u ON u.user_id = ps.user_id
                 WHERE ps.is_paid_current_period = FALSE
-                  AND (ps.payment_day - %s) BETWEEN 0 AND %s
+                  AND ps.payment_day = %s
+                  AND u.status = 'approved'
+                ORDER BY ps.user_id
+            """, (today.day,))
+            return cur.fetchall()
+
+
+def get_unpaid_subscriptions_with_users(today: date):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    ps.user_id,
+                    u.username,
+                    u.first_name,
+                    ps.payment_day,
+                    ps.subscription_type,
+                    ps.subscription_end_date,
+                    ps.last_payment_date,
+                    ps.is_paid_current_period,
+                    ps.has_custom_schedule,
+                    ps.payment_claimed
+                FROM player_subscriptions ps
+                JOIN users u ON u.user_id = ps.user_id
+                WHERE ps.payment_day <= %s
+                  AND ps.is_paid_current_period = FALSE
                   AND u.status = 'approved'
                 ORDER BY ps.payment_day, ps.user_id
-            """, (today.day, days_before))
+            """, (today.day,))
             return cur.fetchall()
 
 
@@ -255,6 +294,32 @@ def get_subscriptions_ending_soon_with_users(today: date, days: int = 5):
                   AND u.status = 'approved'
                 ORDER BY ps.subscription_end_date
             """, (today, end_limit))
+            return cur.fetchall()
+
+
+def get_overdue_subscription_end_with_users(today: date):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    ps.user_id,
+                    u.username,
+                    u.first_name,
+                    ps.payment_day,
+                    ps.subscription_type,
+                    ps.subscription_end_date,
+                    ps.last_payment_date,
+                    ps.is_paid_current_period,
+                    ps.has_custom_schedule,
+                    ps.payment_claimed
+                FROM player_subscriptions ps
+                JOIN users u ON u.user_id = ps.user_id
+                WHERE ps.is_paid_current_period = FALSE
+                  AND ps.subscription_end_date IS NOT NULL
+                  AND ps.subscription_end_date < %s
+                  AND u.status = 'approved'
+                ORDER BY ps.subscription_end_date, ps.user_id
+            """, (today,))
             return cur.fetchall()
 
 
@@ -345,78 +410,3 @@ def set_full_attendance_bonus(user_id: int, value: bool):
                 WHERE user_id = %s
             """, (value, user_id))
         conn.commit()
-
-def get_overdue_subscription_end_with_users(today: date):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    ps.user_id,
-                    u.username,
-                    u.first_name,
-                    ps.payment_day,
-                    ps.subscription_type,
-                    ps.subscription_end_date,
-                    ps.last_payment_date,
-                    ps.is_paid_current_period,
-                    ps.has_custom_schedule,
-                    ps.payment_claimed
-                FROM player_subscriptions ps
-                JOIN users u ON u.user_id = ps.user_id
-                WHERE ps.is_paid_current_period = FALSE
-                  AND ps.subscription_end_date IS NOT NULL
-                  AND ps.subscription_end_date < %s
-                  AND u.status = 'approved'
-                ORDER BY ps.subscription_end_date, ps.user_id
-            """, (today,))
-            return cur.fetchall()
-
-def get_payment_due_today_with_users(today: date):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    ps.user_id,
-                    u.username,
-                    u.first_name,
-                    ps.payment_day,
-                    ps.subscription_type,
-                    ps.subscription_end_date,
-                    ps.last_payment_date,
-                    ps.is_paid_current_period,
-                    ps.has_custom_schedule,
-                    ps.payment_claimed
-                FROM player_subscriptions ps
-                JOIN users u ON u.user_id = ps.user_id
-                WHERE ps.is_paid_current_period = FALSE
-                  AND ps.payment_day = %s
-                  AND u.status = 'approved'
-                ORDER BY ps.user_id
-            """, (today.day,))
-            return cur.fetchall()
-
-
-def get_overdue_subscription_end_with_users(today: date):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    ps.user_id,
-                    u.username,
-                    u.first_name,
-                    ps.payment_day,
-                    ps.subscription_type,
-                    ps.subscription_end_date,
-                    ps.last_payment_date,
-                    ps.is_paid_current_period,
-                    ps.has_custom_schedule,
-                    ps.payment_claimed
-                FROM player_subscriptions ps
-                JOIN users u ON u.user_id = ps.user_id
-                WHERE ps.is_paid_current_period = FALSE
-                  AND ps.subscription_end_date IS NOT NULL
-                  AND ps.subscription_end_date < %s
-                  AND u.status = 'approved'
-                ORDER BY ps.subscription_end_date, ps.user_id
-            """, (today,))
-            return cur.fetchall()
