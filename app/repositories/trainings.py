@@ -702,3 +702,84 @@ def get_period_no_response_stats(start_date: date, end_date: date):
             ))
 
             return cur.fetchall()
+
+
+def get_month_total_trainings_count(year: int, month: int):
+    """
+    Считает количество тренировок за месяц.
+
+    Отменённые тренировки не считаем.
+    """
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*)
+                FROM trainings
+                WHERE EXTRACT(YEAR FROM start_time) = %s
+                  AND EXTRACT(MONTH FROM start_time) = %s
+                  AND cancelled_at IS NULL
+            """, (
+                year,
+                month,
+            ))
+
+            row = cur.fetchone()
+            return row[0] if row else 0
+
+
+def get_month_attendance_rating_stats(year: int, month: int):
+    """
+    Рейтинг посещаемости за месяц.
+
+    Логика:
+    - берём всех approved игроков;
+    - берём все тренировки за месяц;
+    - yes_count = сколько раз игрок нажал 'Приду';
+    - no_count = сколько раз игрок нажал 'Не приду';
+    - no_response_count = сколько раз игрок не ответил;
+    - total_trainings = сколько всего тренировок было в месяце;
+    - если игрок не ответил, это НЕ считается как посещение.
+
+    Возвращает:
+    user_id, username, first_name, yes_count, no_count, no_response_count, total_trainings
+    """
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                WITH month_trainings AS (
+                    SELECT id
+                    FROM trainings
+                    WHERE EXTRACT(YEAR FROM start_time) = %s
+                      AND EXTRACT(MONTH FROM start_time) = %s
+                      AND cancelled_at IS NULL
+                )
+                SELECT
+                    u.user_id,
+                    u.username,
+                    u.first_name,
+                    COUNT(*) FILTER (WHERE tr.response = 'yes') AS yes_count,
+                    COUNT(*) FILTER (WHERE tr.response = 'no') AS no_count,
+                    COUNT(*) FILTER (WHERE tr.user_id IS NULL) AS no_response_count,
+                    COUNT(mt.id) AS total_trainings
+                FROM users u
+                CROSS JOIN month_trainings mt
+                LEFT JOIN training_responses tr
+                    ON tr.training_id = mt.id
+                   AND tr.user_id = u.user_id
+                WHERE u.status = 'approved'
+                GROUP BY u.user_id, u.username, u.first_name
+                ORDER BY
+                    COUNT(*) FILTER (WHERE tr.response = 'yes') DESC,
+                    COUNT(*) FILTER (WHERE tr.user_id IS NULL) ASC,
+                    u.first_name NULLS LAST,
+                    u.user_id
+            """, (
+                year,
+                month,
+            ))
+
+            return cur.fetchall()

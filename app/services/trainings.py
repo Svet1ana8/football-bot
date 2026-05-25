@@ -16,6 +16,7 @@ from app.repositories.trainings import (
     create_training_reminder_log,
     deactivate_training,
     get_active_training,
+    get_month_attendance_rating_stats,
     get_month_no_response_stats,
     get_training_responses,
     get_user_response_for_training,
@@ -71,6 +72,14 @@ NO_RESPONSE_STATS_REPORT_END_TIME = time(12, 59)
 
 # Чтобы отчёт не был слишком длинным в Telegram.
 NO_RESPONSE_STATS_MAX_PLAYERS = 30
+
+# Ежемесячный рейтинг посещаемости тренеру.
+# Отправляется в последний день месяца в окне 13:00–13:59.
+MONTH_ATTENDANCE_REPORT_START_TIME = time(13, 0)
+MONTH_ATTENDANCE_REPORT_END_TIME = time(13, 59)
+
+# Чтобы Telegram-сообщение не было слишком длинным.
+MONTH_ATTENDANCE_MAX_PLAYERS = 40
 
 
 def get_coach_ids_from_config() -> list[int]:
@@ -188,6 +197,90 @@ def mark_no_response_report_sent(
         conn.commit()
 
 
+def ensure_month_attendance_report_logs_schema():
+    """
+    Таблица логов для ежемесячного отчёта посещаемости.
+
+    Нужна, чтобы бот не отправлял один и тот же отчёт каждые 5 минут
+    в последний день месяца.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS month_attendance_report_logs (
+                    id SERIAL PRIMARY KEY,
+                    report_date DATE NOT NULL,
+                    report_type TEXT NOT NULL,
+                    success_count INTEGER NOT NULL DEFAULT 0,
+                    fail_count INTEGER NOT NULL DEFAULT 0,
+                    sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE(report_date, report_type)
+                )
+            """)
+
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_month_attendance_report_logs_date_type
+                ON month_attendance_report_logs(report_date, report_type)
+            """)
+
+        conn.commit()
+
+
+def was_month_attendance_report_sent(report_date: date, report_type: str) -> bool:
+    """
+    Проверяет, был ли уже отправлен отчёт посещаемости за этот месяц.
+    """
+    ensure_month_attendance_report_logs_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 1
+                FROM month_attendance_report_logs
+                WHERE report_date = %s
+                  AND report_type = %s
+                LIMIT 1
+            """, (
+                report_date,
+                report_type,
+            ))
+
+            return cur.fetchone() is not None
+
+
+def mark_month_attendance_report_sent(
+    report_date: date,
+    report_type: str,
+    success_count: int,
+    fail_count: int,
+):
+    """
+    Фиксирует отправку отчёта посещаемости.
+    """
+    ensure_month_attendance_report_logs_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO month_attendance_report_logs (
+                    report_date,
+                    report_type,
+                    success_count,
+                    fail_count
+                )
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (report_date, report_type)
+                DO NOTHING
+            """, (
+                report_date,
+                report_type,
+                success_count,
+                fail_count,
+            ))
+
+        conn.commit()
+
+
 def get_no_response_report_type_for_today(now: datetime) -> str | None:
     """
     Отчёт отправляется:
@@ -213,11 +306,33 @@ def get_no_response_report_type_for_today(now: datetime) -> str | None:
     return None
 
 
+def is_last_day_of_month(now: datetime) -> bool:
+    """
+    Проверяет последний день месяца.
+
+    Работает умно:
+    - февраль 28/29;
+    - апрель 30;
+    - май 31;
+    - и так далее.
+    """
+    last_day = calendar.monthrange(now.year, now.month)[1]
+    return now.day == last_day
+
+
 def is_within_no_response_stats_report_window(now: datetime) -> bool:
     """
     Отчёт по неответившим отправляем в окне 12:00–12:59.
     """
     return NO_RESPONSE_STATS_REPORT_START_TIME <= now.time() <= NO_RESPONSE_STATS_REPORT_END_TIME
+
+
+def is_within_month_attendance_report_window(now: datetime) -> bool:
+    """
+    Отчёт посещаемости отправляем в последний день месяца
+    в окне 13:00–13:59.
+    """
+    return MONTH_ATTENDANCE_REPORT_START_TIME <= now.time() <= MONTH_ATTENDANCE_REPORT_END_TIME
 
 
 def unpack_training(active_training):
@@ -696,6 +811,94 @@ def build_month_no_response_report_text(
     return text
 
 
+def build_month_attendance_rating_report_text(report_date: date) -> str:
+    """
+    Формирует рейтинг посещаемости за месяц.
+
+    Считаем:
+    - Приду = посещение;
+    - Не приду = не посещение;
+    - Не ответил = не посещение;
+    - отменённые тренировки не учитываются.
+    """
+    stats = get_month_attendance_rating_stats(
+        year=report_date.year,
+        month=report_date.month,
+    )
+
+    month_name = get_month_name_prepositional(
+        datetime.combine(report_date, time(12, 0), tzinfo=TIMEZONE)
+    )
+
+    if not stats:
+        return (
+            f"📊 Посещаемость за {month_name} {report_date.year}\n\n"
+            "За этот месяц нет данных по тренировкам."
+        )
+
+    total_trainings = stats[0][6] if stats else 0
+
+    if total_trainings == 0:
+        return (
+            f"📊 Посещаемость за {month_name} {report_date.year}\n\n"
+            "В этом месяце не было тренировок."
+        )
+
+    text = (
+        f"📊 Посещаемость за {month_name} {report_date.year}\n\n"
+        f"Всего тренировок за месяц: {total_trainings}\n\n"
+    )
+
+    shown_count = 0
+
+    for index, row in enumerate(stats, start=1):
+        (
+            user_id,
+            username,
+            first_name,
+            yes_count,
+            no_count,
+            no_response_count,
+            total_count,
+        ) = row
+
+        yes_count = yes_count or 0
+        no_count = no_count or 0
+        no_response_count = no_response_count or 0
+        total_count = total_count or total_trainings
+
+        name = first_name or str(user_id)
+
+        if username:
+            name += f" (@{username})"
+
+        text += f"{index}. {name} — {yes_count}/{total_count}"
+
+        details = []
+
+        if no_count:
+            details.append(f"не придёт: {no_count}")
+
+        if no_response_count:
+            details.append(f"не ответил: {no_response_count}")
+
+        if details:
+            text += f" ({', '.join(details)})"
+
+        text += "\n"
+
+        shown_count += 1
+
+        if shown_count >= MONTH_ATTENDANCE_MAX_PLAYERS:
+            remaining = len(stats) - shown_count
+
+            if remaining > 0:
+                text += f"\nИ ещё игроков: {remaining}"
+            break
+
+    return text
+
+
 def get_training_keyboard(training_id: int):
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Приду", callback_data=f"training_yes_{training_id}"),
@@ -1131,6 +1334,74 @@ async def send_monthly_no_response_report(context: ContextTypes.DEFAULT_TYPE):
     }
 
 
+async def send_monthly_attendance_rating_report(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Отправляет тренеру рейтинг посещаемости в последний день месяца.
+
+    Правило:
+    - только последний день месяца;
+    - окно отправки 13:00–13:59;
+    - только тренерам;
+    - игрокам ничего не отправляется;
+    - один раз в месяц.
+    """
+    now = datetime.now(TIMEZONE)
+
+    if not is_last_day_of_month(now):
+        return None
+
+    if not is_within_month_attendance_report_window(now):
+        return None
+
+    report_date = now.date()
+    report_type = "month_attendance_rating"
+
+    if was_month_attendance_report_sent(report_date, report_type):
+        return None
+
+    coach_ids = get_coach_ids_from_config()
+
+    if not coach_ids:
+        print("COACH_IDS is empty or not configured. Month attendance report was not sent.")
+        return None
+
+    text = build_month_attendance_rating_report_text(report_date)
+
+    success_count = 0
+    fail_count = 0
+
+    for coach_id in coach_ids:
+        try:
+            await context.bot.send_message(
+                chat_id=coach_id,
+                text=text,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Ошибка отправки отчёта посещаемости тренеру {coach_id}: {e}")
+            fail_count += 1
+
+    if success_count > 0:
+        mark_month_attendance_report_sent(
+            report_date=report_date,
+            report_type=report_type,
+            success_count=success_count,
+            fail_count=fail_count,
+        )
+
+    print(
+        f"Month attendance report {report_date}: "
+        f"sent to {success_count} coaches, failed: {fail_count}."
+    )
+
+    return {
+        "report_date": report_date,
+        "report_type": report_type,
+        "success_count": success_count,
+        "fail_count": fail_count,
+    }
+
+
 async def send_manual_training_reminder(
     context: ContextTypes.DEFAULT_TYPE,
     coach_user_id: int | None = None,
@@ -1337,12 +1608,16 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
     4. 15 числа и 30 числа / последний день короткого месяца:
        отчёт тренеру по игрокам, которые часто не отвечают.
 
+    5. В последний день месяца:
+       рейтинг посещаемости тренеру.
+
     Эти логики используют разные поля/логи в БД и не конфликтуют.
     """
     await send_auto_training_reminder(context)
     await send_training_day_no_response_reminder(context)
     await send_coach_training_report(context)
     await send_monthly_no_response_report(context)
+    await send_monthly_attendance_rating_report(context)
 
 
 async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
@@ -1509,7 +1784,8 @@ def schedule_training_repeat_job(application):
 
     # Проверяем каждые 5 минут, чтобы не пропустить окно после рестарта.
     # Фактическая отправка авто-напоминаний, напоминаний неответившим,
-    # авто-отчёта тренеру и отчёта по неответившим ограничена полями/логами в БД.
+    # авто-отчёта тренеру, отчёта по неответившим и рейтинга посещаемости
+    # ограничена полями/логами в БД.
     application.job_queue.run_repeating(
         repeat_training_reminder_job,
         interval=timedelta(minutes=5),
