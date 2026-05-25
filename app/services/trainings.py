@@ -8,14 +8,16 @@ from app.config import (
     TRAINING_TIME,
     TIMEZONE,
 )
-from app.db import get_connection
 from app.repositories.trainings import (
+    cancel_active_training,
     create_training,
+    create_training_reminder_log,
     deactivate_training,
     get_active_training,
     get_training_responses,
     get_user_response_for_training,
     save_training_response,
+    update_training_last_confirmation,
     update_training_last_reminder,
 )
 from app.repositories.users import get_users_by_status
@@ -23,157 +25,41 @@ from app.services.access import is_broadcast_recipient
 from app.utils.dates import get_month_name_prepositional
 
 
-# День ДО тренировки:
-# Воскресенье / Вторник / Четверг
+# День ДО стандартной тренировки:
+# Воскресенье / Вторник / Четверг.
 TRAINING_VOTE_WEEKDAYS = {6, 1, 3}
 
-# День тренировки:
-# Понедельник / Среда / Пятница
+# Стандартные дни тренировок:
+# Понедельник / Среда / Пятница.
 TRAINING_DAYS = {0, 2, 4}
 
-# Авто-напоминания за день до тренировки:
-# с 09:00 до 23:00 каждый час
+# Авто-напоминания за день до стандартной тренировки:
+# с 09:00 до 23:00 каждый час.
 TRAINING_AUTO_START_TIME = time(9, 0)
 TRAINING_REPEAT_END_TIME = time(23, 0)
 AUTO_REMINDER_REPEAT_MINUTES = 60
 
 # Контрольное подтверждение в день тренировки:
-# окно 18:00–18:59, чтобы не пропустить, если бот проснулся в 18:13
+# окно 18:00–18:59, чтобы не пропустить,
+# если бот/сервер проснулся не ровно в 18:00.
 TRAINING_CONFIRMATION_START_TIME = time(18, 0)
 TRAINING_CONFIRMATION_END_TIME = time(18, 59)
 
 
-def ensure_training_reminder_schema():
-    """
-    Безопасная миграция.
-
-    Нужна для того, чтобы:
-    - контрольное подтверждение не конфликтовало с обычными напоминаниями;
-    - ручная кнопка тренера не сбивала авто-расписание;
-    - можно было видеть историю отправок.
-    """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                ALTER TABLE trainings
-                ADD COLUMN IF NOT EXISTS last_confirmation_time TIMESTAMPTZ
-            """)
-
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS training_reminder_logs (
-                    id SERIAL PRIMARY KEY,
-                    training_id INTEGER NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
-                    reminder_type TEXT NOT NULL,
-                    sent_by_user_id BIGINT,
-                    sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-            """)
-
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_training_reminder_logs_training_id
-                ON training_reminder_logs(training_id)
-            """)
-
-            cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_training_reminder_logs_type_sent_at
-                ON training_reminder_logs(reminder_type, sent_at DESC)
-            """)
-
-        conn.commit()
-
-
-def create_training_reminder_log(
-    training_id: int,
-    reminder_type: str,
-    sent_by_user_id: int | None = None,
-):
-    """
-    Логирует отправку напоминания.
-
-    reminder_type:
-    - auto_day_before
-    - training_day_confirmation
-    - manual_coach
-    """
-    try:
-        ensure_training_reminder_schema()
-
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO training_reminder_logs (
-                        training_id,
-                        reminder_type,
-                        sent_by_user_id
-                    )
-                    VALUES (%s, %s, %s)
-                """, (
-                    training_id,
-                    reminder_type,
-                    sent_by_user_id,
-                ))
-
-            conn.commit()
-
-    except Exception as e:
-        # Ошибка логирования не должна ломать рассылку.
-        print(f"Не удалось записать training_reminder_log: {e}")
-
-
-def get_training_last_confirmation_time(training_id: int):
-    ensure_training_reminder_schema()
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT last_confirmation_time
-                FROM trainings
-                WHERE id = %s
-            """, (training_id,))
-
-            row = cur.fetchone()
-            return row[0] if row else None
-
-
-def update_training_last_confirmation(training_id: int, confirmation_time: datetime):
-    ensure_training_reminder_schema()
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE trainings
-                SET last_confirmation_time = %s
-                WHERE id = %s
-            """, (
-                confirmation_time,
-                training_id,
-            ))
-
-        conn.commit()
-
-
-def reset_training_last_reminder(training_id: int):
-    """
-    На случай если create_training() в репозитории ставит
-    last_reminder_time = start_time.
-
-    Для новой тренировки это неправильно:
-    last_reminder_time должен быть NULL до первой реальной авто-рассылки.
-    """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE trainings
-                SET last_reminder_time = NULL
-                WHERE id = %s
-            """, (training_id,))
-
-        conn.commit()
-
-
 def unpack_training(active_training):
     """
-    Поддерживает старый tuple из 6 полей и новый tuple из 7 полей.
+    Поддерживает tuple из get_active_training().
+
+    Поля:
+    0 - id
+    1 - message_text
+    2 - start_time
+    3 - last_reminder_time
+    4 - stop_at
+    5 - is_active
+    6 - last_confirmation_time
+    7 - is_custom
+    8 - created_by_user_id
     """
     if not active_training:
         return None
@@ -186,6 +72,8 @@ def unpack_training(active_training):
         "stop_at": active_training[4],
         "is_active": active_training[5],
         "last_confirmation_time": active_training[6] if len(active_training) > 6 else None,
+        "is_custom": active_training[7] if len(active_training) > 7 else False,
+        "created_by_user_id": active_training[8] if len(active_training) > 8 else None,
     }
 
 
@@ -210,8 +98,7 @@ def parse_training_time() -> time:
 
 def get_today_stop_at() -> datetime:
     """
-    Это конец окна авто-напоминаний за день до тренировки.
-    Не используем stop_at для удаления/закрытия тренировки.
+    Конец окна авто-напоминаний за день до тренировки.
     """
     now = datetime.now(TIMEZONE)
     return datetime.combine(now.date(), TRAINING_REPEAT_END_TIME, tzinfo=TIMEZONE)
@@ -219,7 +106,7 @@ def get_today_stop_at() -> datetime:
 
 def get_next_training_datetime_from_vote_day(now: datetime) -> datetime:
     """
-    Для Вс/Вт/Чт тренировка всегда на следующий день:
+    Для стандартного расписания:
     Вс -> Пн
     Вт -> Ср
     Чт -> Пт
@@ -230,8 +117,8 @@ def get_next_training_datetime_from_vote_day(now: datetime) -> datetime:
 
 def get_next_or_today_training_datetime(now: datetime) -> datetime:
     """
-    Для ручной кнопки тренера:
-    - если сегодня день тренировки, берём сегодня;
+    Для ручной кнопки тренера, если активной тренировки нет:
+    - если сегодня стандартный день тренировки, берём сегодня;
     - если сегодня день предварительного голосования, берём завтра;
     - иначе берём ближайший Пн/Ср/Пт.
     """
@@ -260,6 +147,10 @@ def is_training_day(now: datetime) -> bool:
 
 
 def is_within_auto_reminder_window(now: datetime) -> bool:
+    """
+    Авто-напоминания работают только для стандартного расписания:
+    Вс / Вт / Чт, 09:00–23:00.
+    """
     return (
         is_vote_day(now)
         and TRAINING_AUTO_START_TIME <= now.time() <= TRAINING_REPEAT_END_TIME
@@ -267,52 +158,33 @@ def is_within_auto_reminder_window(now: datetime) -> bool:
 
 
 def is_within_confirmation_window(now: datetime) -> bool:
-    return (
-        is_training_day(now)
-        and TRAINING_CONFIRMATION_START_TIME <= now.time() <= TRAINING_CONFIRMATION_END_TIME
-    )
-
-
-def next_training_weekday_from_vote_day(vote_weekday: int) -> int:
-    mapping = {
-        6: 0,  # вс -> пн
-        1: 2,  # вт -> ср
-        3: 4,  # чт -> пт
-    }
-    return mapping[vote_weekday]
+    """
+    Контрольное подтверждение работает каждый день,
+    но реально отправится только если сегодня дата активной тренировки.
+    """
+    return TRAINING_CONFIRMATION_START_TIME <= now.time() <= TRAINING_CONFIRMATION_END_TIME
 
 
 def is_confirmation_day_for_active_training(start_time: datetime, now: datetime) -> bool:
     """
-    Новая логика:
-    start_time = дата и время самой тренировки.
+    Контрольное подтверждение зависит от start_time активной тренировки.
 
-    Старая совместимость:
-    если start_time был временем создания голосования за день до тренировки,
-    тоже корректно определяем день тренировки.
+    Поэтому работает:
+    - для стандартных тренировок Пн/Ср/Пт;
+    - для нестандартных тренировок, например воскресенье,
+      если тренер вручную создал тренировку на воскресенье.
     """
     if not start_time:
         return False
 
     start_local = start_time.astimezone(TIMEZONE)
-
-    # Новая логика: start_time — дата самой тренировки.
-    if start_local.date() == now.date():
-        return True
-
-    # Совместимость со старой логикой:
-    # start_time мог быть датой голосования, а тренировка — на следующий день.
-    if start_local.date() == now.date() - timedelta(days=1):
-        if start_local.weekday() in TRAINING_VOTE_WEEKDAYS:
-            expected_training_day = next_training_weekday_from_vote_day(start_local.weekday())
-            return now.weekday() == expected_training_day
-
-    return False
+    return start_local.date() == now.date()
 
 
 def is_active_training_for_vote_day(active_training, now: datetime) -> bool:
     """
-    Проверяет, относится ли активная тренировка к текущему дню предварительного голосования.
+    Проверяет, относится ли активная тренировка к текущему дню
+    предварительного голосования по стандартному расписанию.
     """
     data = unpack_training(active_training)
 
@@ -325,30 +197,7 @@ def is_active_training_for_vote_day(active_training, now: datetime) -> bool:
     start_local = data["start_time"].astimezone(TIMEZONE)
     expected_training_date = get_next_training_datetime_from_vote_day(now).date()
 
-    # Новая логика: start_time = дата тренировки.
-    if start_local.date() == expected_training_date:
-        return True
-
-    # Старая совместимость: start_time = дата голосования.
-    if start_local.date() == now.date() and is_vote_day(now):
-        return True
-
-    return False
-
-
-def is_today_training_active(active_training) -> bool:
-    """
-    Оставлено для совместимости со старым кодом.
-    """
-    data = unpack_training(active_training)
-
-    if not data:
-        return False
-
-    return is_confirmation_day_for_active_training(
-        data["start_time"],
-        datetime.now(TIMEZONE),
-    )
+    return start_local.date() == expected_training_date
 
 
 def was_auto_reminder_sent_recently(last_reminder_time: datetime | None, now: datetime) -> bool:
@@ -367,11 +216,11 @@ def was_auto_reminder_sent_recently(last_reminder_time: datetime | None, now: da
     return now < next_allowed
 
 
-def was_confirmation_sent_today(training_id: int, now: datetime) -> bool:
+def was_confirmation_sent_today(training, now: datetime) -> bool:
     """
     Контрольное подтверждение должно уходить один раз в день тренировки.
     """
-    last_confirmation_time = get_training_last_confirmation_time(training_id)
+    last_confirmation_time = training.get("last_confirmation_time")
 
     if not last_confirmation_time:
         return False
@@ -396,12 +245,15 @@ def build_today_training_message() -> str:
     )
 
 
-def build_evening_training_message() -> str:
+def build_custom_training_message(training_datetime: datetime) -> str:
+    training_local = training_datetime.astimezone(TIMEZONE)
+    date_text = training_local.strftime("%d.%m.%Y")
+    time_text = training_local.strftime("%H:%M")
+
     return (
-        f"Сегодня тренировка в {TRAINING_TIME}.\n"
-        f"Локация: {TRAINING_LOCATION_URL}\n\n"
-        "Контрольное подтверждение:\n"
-        "Ты сегодня точно будешь на тренировке? 😅"
+        f"Тренировка {date_text} в {time_text}.\n"
+        f"Локация: {TRAINING_LOCATION_URL}\n"
+        "Контрольный вопрос: ты придёшь на тренировку?"
     )
 
 
@@ -411,7 +263,7 @@ def build_evening_training_message_for_player(previous_response: str | None) -> 
     elif previous_response == "no":
         previous_text = "Вчера ты отметил, что не придёшь."
     else:
-        previous_text = "Вчера ты ещё не ответил по тренировке."
+        previous_text = "Ты ещё не ответил по этой тренировке."
 
     return (
         f"Сегодня тренировка в {TRAINING_TIME}.\n"
@@ -466,9 +318,8 @@ def get_or_create_training_for_vote_day(now: datetime):
         message_text=message_text,
         start_time=training_datetime,
         stop_at=stop_at,
+        is_custom=False,
     )
-
-    reset_training_last_reminder(training_id)
 
     created_training = get_active_training()
     return unpack_training(created_training), True
@@ -480,7 +331,7 @@ def get_or_create_training_for_manual_reminder(now: datetime):
 
     Важно:
     - если активная тренировка уже есть — используем её training_id;
-    - если активной нет — создаём ближайшую тренировку;
+    - если активной нет — создаём ближайшую стандартную тренировку;
     - training_responses не очищаем.
     """
     active_training = get_active_training()
@@ -495,15 +346,18 @@ def get_or_create_training_for_manual_reminder(now: datetime):
     else:
         message_text = build_training_message()
 
-    stop_at = datetime.combine(now.date(), TRAINING_REPEAT_END_TIME, tzinfo=TIMEZONE)
+    stop_at = datetime.combine(
+        now.date(),
+        TRAINING_REPEAT_END_TIME,
+        tzinfo=TIMEZONE,
+    )
 
     training_id = create_training(
         message_text=message_text,
         start_time=training_datetime,
         stop_at=stop_at,
+        is_custom=False,
     )
-
-    reset_training_last_reminder(training_id)
 
     created_training = get_active_training()
     return unpack_training(created_training), True
@@ -535,7 +389,7 @@ async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE
 
 async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
     """
-    Авто-напоминание за день до тренировки.
+    Авто-напоминание за день до стандартной тренировки.
 
     Правило:
     - Воскресенье / Вторник / Четверг;
@@ -543,8 +397,6 @@ async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
     - каждый час;
     - всем игрокам со статусом approved.
     """
-    ensure_training_reminder_schema()
-
     now = datetime.now(TIMEZONE)
 
     if not is_within_auto_reminder_window(now):
@@ -618,8 +470,6 @@ async def send_manual_training_reminder(
     - НЕ мешает авто-напоминанию;
     - НЕ мешает контрольному подтверждению.
     """
-    ensure_training_reminder_schema()
-
     now = datetime.now(TIMEZONE)
     training, created = get_or_create_training_for_manual_reminder(now)
 
@@ -669,6 +519,104 @@ async def send_manual_training_reminder(
     }
 
 
+async def create_custom_training_vote(
+    context: ContextTypes.DEFAULT_TYPE,
+    training_datetime: datetime,
+    coach_user_id: int | None = None,
+):
+    """
+    Создаёт голосование на нестандартную дату.
+
+    Пример:
+    тренер отменил пятницу и поставил тренировку на воскресенье.
+
+    Что делает:
+    - создаёт новую тренировку с новым training_id;
+    - старая активная тренировка закрывается внутри create_training();
+    - старые ответы не удаляет;
+    - отправляет голосование всем approved игрокам.
+    """
+    training_datetime = training_datetime.astimezone(TIMEZONE)
+
+    message_text = build_custom_training_message(training_datetime)
+
+    stop_at = datetime.combine(
+        training_datetime.date(),
+        TRAINING_REPEAT_END_TIME,
+        tzinfo=TIMEZONE,
+    )
+
+    training_id = create_training(
+        message_text=message_text,
+        start_time=training_datetime,
+        stop_at=stop_at,
+        created_by_user_id=coach_user_id,
+        is_custom=True,
+    )
+
+    approved_users = get_users_by_status("approved")
+    keyboard = get_training_keyboard(training_id)
+
+    success_count = 0
+    fail_count = 0
+
+    for user_id, username, first_name in approved_users:
+        if not is_broadcast_recipient(user_id):
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=message_text,
+                reply_markup=keyboard,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Ошибка отправки нестандартной тренировки игроку {user_id}: {e}")
+            fail_count += 1
+
+    create_training_reminder_log(
+        training_id=training_id,
+        reminder_type="custom_training_created",
+        sent_by_user_id=coach_user_id,
+    )
+
+    return {
+        "training_id": training_id,
+        "success_count": success_count,
+        "fail_count": fail_count,
+        "start_time": training_datetime,
+        "stop_at": stop_at,
+    }
+
+
+async def cancel_current_training_vote(
+    coach_user_id: int | None = None,
+    reason: str | None = None,
+):
+    """
+    Отменяет текущую активную тренировку.
+
+    Важно:
+    - ответы не удаляются;
+    - история остаётся;
+    - активная тренировка просто закрывается.
+    """
+    cancelled_training_id = cancel_active_training(
+        cancelled_by_user_id=coach_user_id,
+        reason=reason,
+    )
+
+    if cancelled_training_id:
+        create_training_reminder_log(
+            training_id=cancelled_training_id,
+            reminder_type="training_cancelled",
+            sent_by_user_id=coach_user_id,
+        )
+
+    return cancelled_training_id
+
+
 async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE, force_send: bool = False):
     """
     Сохраняем старый интерфейс, чтобы coach.py/callbacks.py не сломались.
@@ -703,16 +651,13 @@ async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
     """
     Контрольное подтверждение в день тренировки.
 
-    Правило:
-    - Понедельник / Среда / Пятница;
-    - окно 18:00–18:59;
-    - всем approved игрокам:
-      ✅ кто нажал "Приду";
-      ❌ кто нажал "Не приду";
-      ⏳ кто не ответил.
-    """
-    ensure_training_reminder_schema()
+    Работает для любой активной тренировки,
+    у которой start_time.date() == today.
 
+    Значит:
+    - стандартные Пн/Ср/Пт работают;
+    - нестандартное воскресенье тоже работает.
+    """
     now = datetime.now(TIMEZONE)
 
     if not is_within_confirmation_window(now):
@@ -737,7 +682,7 @@ async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
     if not is_confirmation_day_for_active_training(start_time, now):
         return
 
-    if was_confirmation_sent_today(training_id, now):
+    if was_confirmation_sent_today(training, now):
         return
 
     approved_users = get_users_by_status("approved")
@@ -917,7 +862,8 @@ def build_training_status_text(application) -> str:
     last_reminder_time = training["last_reminder_time"]
     stop_at = training["stop_at"]
     is_active = training["is_active"]
-    last_confirmation_time = get_training_last_confirmation_time(training_id)
+    last_confirmation_time = training["last_confirmation_time"]
+    is_custom = training["is_custom"]
 
     approved_users = [
         row for row in get_users_by_status("approved")
@@ -966,6 +912,7 @@ def build_training_status_text(application) -> str:
     )
 
     status_text = "активно" if is_active else "завершено"
+    training_type_text = "нестандартная" if is_custom else "стандартная"
     next_run_text = "недоступен"
 
     if is_active and is_vote_day(now_local) and now_local.time() <= TRAINING_REPEAT_END_TIME:
@@ -987,6 +934,7 @@ def build_training_status_text(application) -> str:
     return (
         "📣 Статус напоминания о тренировке\n\n"
         f"Статус: {status_text}\n"
+        f"Тип: {training_type_text}\n"
         f"Тренировка: {start_time_text}\n"
         f"Последнее авто-напоминание: {last_reminder_text}\n"
         f"Авто-напоминания до: {stop_at_text}\n"

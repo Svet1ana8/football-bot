@@ -7,14 +7,42 @@ def ensure_training_repository_schema():
     """
     Безопасные миграции для тренировок и ответов.
 
-    Ничего не удаляет.
-    Только добавляет недостающие поля, если их ещё нет.
+    Важно:
+    - ничего не удаляем;
+    - старые ответы не трогаем;
+    - старые тренировки не удаляем;
+    - только добавляем недостающие поля/индексы.
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 ALTER TABLE trainings
                 ADD COLUMN IF NOT EXISTS last_confirmation_time TIMESTAMPTZ
+            """)
+
+            cur.execute("""
+                ALTER TABLE trainings
+                ADD COLUMN IF NOT EXISTS is_custom BOOLEAN NOT NULL DEFAULT FALSE
+            """)
+
+            cur.execute("""
+                ALTER TABLE trainings
+                ADD COLUMN IF NOT EXISTS created_by_user_id BIGINT
+            """)
+
+            cur.execute("""
+                ALTER TABLE trainings
+                ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ
+            """)
+
+            cur.execute("""
+                ALTER TABLE trainings
+                ADD COLUMN IF NOT EXISTS cancelled_by_user_id BIGINT
+            """)
+
+            cur.execute("""
+                ALTER TABLE trainings
+                ADD COLUMN IF NOT EXISTS cancel_reason TEXT
             """)
 
             cur.execute("""
@@ -28,6 +56,11 @@ def ensure_training_repository_schema():
             """)
 
             cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_trainings_active_start_time
+                ON trainings(is_active, start_time DESC)
+            """)
+
+            cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_training_responses_training_id
                 ON training_responses(training_id)
             """)
@@ -38,14 +71,35 @@ def ensure_training_repository_schema():
             """)
 
             cur.execute("""
-                CREATE INDEX IF NOT EXISTS idx_trainings_active_start_time
-                ON trainings(is_active, start_time DESC)
+                CREATE TABLE IF NOT EXISTS training_reminder_logs (
+                    id SERIAL PRIMARY KEY,
+                    training_id INTEGER NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
+                    reminder_type TEXT NOT NULL,
+                    sent_by_user_id BIGINT,
+                    sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_training_reminder_logs_training_id
+                ON training_reminder_logs(training_id)
+            """)
+
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_training_reminder_logs_type_sent_at
+                ON training_reminder_logs(reminder_type, sent_at DESC)
             """)
 
         conn.commit()
 
 
-def create_training(message_text: str, start_time: datetime, stop_at: datetime):
+def create_training(
+    message_text: str,
+    start_time: datetime,
+    stop_at: datetime,
+    created_by_user_id: int | None = None,
+    is_custom: bool = False,
+):
     """
     Создаёт новую тренировку.
 
@@ -53,8 +107,11 @@ def create_training(message_text: str, start_time: datetime, stop_at: datetime):
     - старая активная тренировка НЕ удаляется;
     - старая активная тренировка становится is_active = FALSE;
     - новая тренировка получает новый id;
-    - ответы старых тренировок остаются в training_responses;
-    - новые ответы будут писаться под новый training_id.
+    - старые ответы остаются в training_responses;
+    - новые ответы пишутся под новый training_id.
+
+    Совместимо со старыми вызовами:
+    create_training(message_text, start_time, stop_at)
     """
     ensure_training_repository_schema()
 
@@ -72,16 +129,25 @@ def create_training(message_text: str, start_time: datetime, stop_at: datetime):
                     start_time,
                     last_reminder_time,
                     stop_at,
-                    is_active
+                    is_active,
+                    last_confirmation_time,
+                    is_custom,
+                    created_by_user_id,
+                    cancelled_at,
+                    cancelled_by_user_id,
+                    cancel_reason
                 )
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL)
                 RETURNING id
             """, (
                 message_text,
                 start_time,
                 None,
                 stop_at,
-                True
+                True,
+                None,
+                is_custom,
+                created_by_user_id,
             ))
 
             training_id = cur.fetchone()[0]
@@ -95,7 +161,7 @@ def get_active_training():
     """
     Возвращает текущую активную тренировку.
 
-    Поля:
+    Поля tuple:
     0 - id
     1 - message_text
     2 - start_time
@@ -103,6 +169,8 @@ def get_active_training():
     4 - stop_at
     5 - is_active
     6 - last_confirmation_time
+    7 - is_custom
+    8 - created_by_user_id
     """
     ensure_training_repository_schema()
 
@@ -116,7 +184,9 @@ def get_active_training():
                     last_reminder_time,
                     stop_at,
                     is_active,
-                    last_confirmation_time
+                    last_confirmation_time,
+                    is_custom,
+                    created_by_user_id
                 FROM trainings
                 WHERE is_active = TRUE
                 ORDER BY id DESC
@@ -131,7 +201,7 @@ def update_training_last_reminder(training_id: int, reminder_time: datetime):
 
     Важно:
     - ручная кнопка тренера НЕ должна вызывать эту функцию;
-    - контрольное подтверждение в день тренировки НЕ должно вызывать эту функцию.
+    - контрольное подтверждение НЕ должно вызывать эту функцию.
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -141,7 +211,7 @@ def update_training_last_reminder(training_id: int, reminder_time: datetime):
                 WHERE id = %s
             """, (
                 reminder_time,
-                training_id
+                training_id,
             ))
 
         conn.commit()
@@ -151,8 +221,8 @@ def update_training_last_confirmation(training_id: int, confirmation_time: datet
     """
     Обновляет время контрольного подтверждения в день тренировки.
 
-    Используется отдельно от last_reminder_time,
-    чтобы контрольное подтверждение не конфликтовало с обычными напоминаниями.
+    Это отдельное поле, чтобы контрольное подтверждение
+    не конфликтовало с обычными авто-напоминаниями.
     """
     ensure_training_repository_schema()
 
@@ -164,7 +234,7 @@ def update_training_last_confirmation(training_id: int, confirmation_time: datet
                 WHERE id = %s
             """, (
                 confirmation_time,
-                training_id
+                training_id,
             ))
 
         conn.commit()
@@ -172,12 +242,12 @@ def update_training_last_confirmation(training_id: int, confirmation_time: datet
 
 def deactivate_training(training_id: int):
     """
-    Завершает тренировку.
+    Просто завершает тренировку.
 
     Важно:
     - тренировку не удаляем;
     - ответы по ней не удаляем;
-    - просто ставим is_active = FALSE.
+    - только ставим is_active = FALSE.
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -192,12 +262,85 @@ def deactivate_training(training_id: int):
         conn.commit()
 
 
+def cancel_active_training(
+    cancelled_by_user_id: int | None = None,
+    reason: str | None = None,
+):
+    """
+    Отменяет текущую активную тренировку.
+
+    Важно:
+    - тренировку не удаляем;
+    - ответы не удаляем;
+    - история остаётся;
+    - просто закрываем active-флаг и записываем отмену.
+    """
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE trainings
+                SET
+                    is_active = FALSE,
+                    cancelled_at = NOW(),
+                    cancelled_by_user_id = %s,
+                    cancel_reason = %s
+                WHERE is_active = TRUE
+                RETURNING id
+            """, (
+                cancelled_by_user_id,
+                reason,
+            ))
+
+            row = cur.fetchone()
+
+        conn.commit()
+
+    return row[0] if row else None
+
+
+def create_training_reminder_log(
+    training_id: int,
+    reminder_type: str,
+    sent_by_user_id: int | None = None,
+):
+    """
+    Логирует отправку/действие по тренировке.
+
+    Типы:
+    - auto_day_before
+    - training_day_confirmation
+    - manual_coach
+    - custom_training_created
+    - training_cancelled
+    """
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO training_reminder_logs (
+                    training_id,
+                    reminder_type,
+                    sent_by_user_id
+                )
+                VALUES (%s, %s, %s)
+            """, (
+                training_id,
+                reminder_type,
+                sent_by_user_id,
+            ))
+
+        conn.commit()
+
+
 def save_training_response(
     training_id: int,
     user_id: int,
     username: str | None,
     first_name: str | None,
-    response: str
+    response: str,
 ):
     """
     Сохраняет ответ игрока на тренировку.
@@ -237,7 +380,7 @@ def save_training_response(
                 user_id,
                 username,
                 first_name,
-                response
+                response,
             ))
 
         conn.commit()
@@ -248,7 +391,7 @@ def save_player_training_response(
     user_id: int,
     username: str | None,
     first_name: str | None,
-    response: str
+    response: str,
 ):
     """
     Алиас под название, которое используется в callbacks.py / services.
@@ -258,7 +401,7 @@ def save_player_training_response(
         user_id=user_id,
         username=username,
         first_name=first_name,
-        response=response
+        response=response,
     )
 
 
@@ -305,7 +448,7 @@ def get_user_response_for_training(training_id: int, user_id: int):
                   AND user_id = %s
             """, (
                 training_id,
-                user_id
+                user_id,
             ))
 
             return cur.fetchone()
@@ -360,7 +503,7 @@ def get_month_attendance_stats(year: int, month: int):
                 ORDER BY yes_count DESC, tr.first_name NULLS LAST, tr.user_id
             """, (
                 year,
-                month
+                month,
             ))
 
             return cur.fetchall()
