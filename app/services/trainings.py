@@ -24,15 +24,20 @@ from app.services.access import is_broadcast_recipient
 from app.utils.dates import get_month_name_prepositional
 
 
-TRAINING_WEEKDAYS = {0, 2, 4}  # Пн, Ср, Пт
-TRAINING_AUTO_START_TIME = time(10, 0)
+# Дни, когда идет предварительное голосование:
+# Воскресенье, Вторник, Четверг
+TRAINING_VOTE_WEEKDAYS = {6, 1, 3}
+
+TRAINING_AUTO_START_TIME = time(9, 0)
+TRAINING_REPEAT_END_TIME = time(23, 0)
+TRAINING_CONFIRMATION_TIME = time(18, 0)
 
 
 def build_training_message() -> str:
     return (
-        f"Сегодня тренировка в {TRAINING_TIME}.\n"
+        f"Завтра тренировка в {TRAINING_TIME}.\n"
         f"Локация: {TRAINING_LOCATION_URL}\n"
-        "Контрольный вопрос: ты точно придёшь на тренировку?"
+        "Контрольный вопрос: ты придёшь на тренировку?"
     )
 
 
@@ -40,7 +45,7 @@ def build_evening_training_message() -> str:
     return (
         f"Сегодня тренировка в {TRAINING_TIME}.\n"
         f"Локация: {TRAINING_LOCATION_URL}\n"
-        "Контрольный вопрос: твои планы не изменились?"
+        "Ты вчера планировал прийти на тренировку, сегодня ты точно будешь? 😅"
     )
 
 
@@ -66,19 +71,15 @@ def get_change_answer_confirm_keyboard(training_id: int):
 
 def get_today_stop_at() -> datetime:
     now = datetime.now(TIMEZONE)
-    hour, minute = map(int, TRAINING_VOTE_CLOSE_TIME.split(":"))
-    return datetime.combine(now.date(), time(hour, minute), tzinfo=TIMEZONE)
+    return datetime.combine(now.date(), TRAINING_REPEAT_END_TIME, tzinfo=TIMEZONE)
 
 
-def is_training_day(now: datetime) -> bool:
-    return now.weekday() in TRAINING_WEEKDAYS
+def is_vote_day(now: datetime) -> bool:
+    return now.weekday() in TRAINING_VOTE_WEEKDAYS
 
 
 def is_after_training_auto_start(now: datetime) -> bool:
-    return now.time().hour > TRAINING_AUTO_START_TIME.hour or (
-        now.time().hour == TRAINING_AUTO_START_TIME.hour and
-        now.time().minute >= TRAINING_AUTO_START_TIME.minute
-    )
+    return now.time() >= TRAINING_AUTO_START_TIME
 
 
 def is_today_training_active(active_training) -> bool:
@@ -86,10 +87,25 @@ def is_today_training_active(active_training) -> bool:
         return False
 
     training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
-    if not start_time:
+    if not start_time or not is_active:
         return False
 
-    return start_time.astimezone(TIMEZONE).date() == datetime.now(TIMEZONE).date() and is_active
+    return start_time.astimezone(TIMEZONE).date() == datetime.now(TIMEZONE).date()
+
+
+def next_training_weekday_from_vote_day(vote_weekday: int) -> int:
+    mapping = {
+        6: 0,  # вс -> пн
+        1: 2,  # вт -> ср
+        3: 4,  # чт -> пт
+    }
+    return mapping[vote_weekday]
+
+
+def is_confirmation_day_for_active_training(start_time: datetime, now: datetime) -> bool:
+    vote_day = start_time.astimezone(TIMEZONE).weekday()
+    expected_training_day = next_training_weekday_from_vote_day(vote_day)
+    return now.weekday() == expected_training_day
 
 
 async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE):
@@ -119,7 +135,7 @@ async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE
 async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TIMEZONE)
 
-    if not is_training_day(now):
+    if not is_vote_day(now):
         return None
 
     active_training = get_active_training()
@@ -175,7 +191,7 @@ async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE):
 async def ensure_training_started_if_needed(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TIMEZONE)
 
-    if not is_training_day(now):
+    if not is_vote_day(now):
         return
 
     if not is_after_training_auto_start(now):
@@ -192,7 +208,7 @@ async def ensure_training_started_if_needed(context: ContextTypes.DEFAULT_TYPE):
 async def auto_start_training_job(context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TIMEZONE)
 
-    if not is_training_day(now):
+    if not is_vote_day(now):
         return
 
     await start_training_reminder(context)
@@ -208,7 +224,7 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
     training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
     now = datetime.now(TIMEZONE)
 
-    if not is_training_day(now):
+    if not is_vote_day(now):
         return
 
     if now >= stop_at:
@@ -244,12 +260,7 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
-    await ensure_training_started_if_needed(context)
-
     now = datetime.now(TIMEZONE)
-
-    if not is_training_day(now):
-        return
 
     active_training = get_active_training()
     if not active_training:
@@ -257,18 +268,18 @@ async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
 
     training_id, message_text, start_time, last_reminder_time, stop_at, is_active = active_training
 
-    if now >= stop_at:
+    if not start_time:
         return
 
-    responses = get_training_responses(training_id)
-    if not responses:
+    if not is_confirmation_day_for_active_training(start_time, now):
         return
 
+    approved_users = get_users_by_status("approved")
     sent_count = 0
     keyboard = get_change_answer_keyboard(training_id)
     evening_message = build_evening_training_message()
 
-    for user_id, username, first_name, response in responses:
+    for user_id, username, first_name in approved_users:
         if not is_broadcast_recipient(user_id):
             continue
 
@@ -363,7 +374,7 @@ def schedule_training_auto_start_job(application):
 
     application.job_queue.run_daily(
         auto_start_training_job,
-        time=time(10, 0, tzinfo=TIMEZONE),
+        time=time(9, 0, tzinfo=TIMEZONE),
         name="training_auto_start_job",
     )
 
@@ -375,7 +386,7 @@ def schedule_training_evening_confirmation_job(application):
 
     application.job_queue.run_daily(
         evening_training_confirmation_job,
-        time=time(18, 0, tzinfo=TIMEZONE),
+        time=TRAINING_CONFIRMATION_TIME.replace(tzinfo=TIMEZONE),
         name="training_evening_confirmation_job",
     )
 
