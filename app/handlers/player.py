@@ -320,39 +320,17 @@ async def open_playbook_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def show_offense_playbook(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file_path = Path("app/static/playbooks/offensive_playbook.pdf")
-
-    if not file_path.exists():
-        await update.message.reply_text(
-            "📘 Playbook / Нападение\n\n"
-            "Файл offensive playbook пока не найден в проекте."
-        )
-        return
-
-    with file_path.open("rb") as f:
-        await update.message.reply_document(
-            document=f,
-            filename="Offensive_Playbook.pdf",
-            caption="📘 Offensive Playbook / Нападение"
-        )
+    await update.message.reply_text(
+        "📘 Playbook / Нападение\n\n"
+        "Обновлённый offensive playbook скоро будет загружен."
+    )
 
 
 async def show_defense_playbook(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file_path = Path("app/static/playbooks/defensive_playbook.pdf")
-
-    if not file_path.exists():
-        await update.message.reply_text(
-            "📘 Playbook / Защита\n\n"
-            "Файл defensive playbook пока не найден в проекте."
-        )
-        return
-
-    with file_path.open("rb") as f:
-        await update.message.reply_document(
-            document=f,
-            filename="Defensive_Playbook.pdf",
-            caption="📘 Defensive Playbook / Защита"
-        )
+    await update.message.reply_text(
+        "📘 Playbook / Защита\n\n"
+        "Обновлённый defensive playbook скоро будет загружен."
+    )
 
 
 async def open_documents_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
