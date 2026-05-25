@@ -1,7 +1,25 @@
+from calendar import monthrange
+from datetime import datetime
+
 from telegram import ReplyKeyboardMarkup
 
+from app.config import TIMEZONE
 
-from telegram import ReplyKeyboardMarkup
+
+MONTHS_RU = [
+    ("Январь", 1),
+    ("Февраль", 2),
+    ("Март", 3),
+    ("Апрель", 4),
+    ("Май", 5),
+    ("Июнь", 6),
+    ("Июль", 7),
+    ("Август", 8),
+    ("Сентябрь", 9),
+    ("Октябрь", 10),
+    ("Ноябрь", 11),
+    ("Декабрь", 12),
+]
 
 
 def get_player_menu():
@@ -119,3 +137,130 @@ def get_games_schedule_menu():
         ["Назад"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_games_month_menu():
+    """
+    Меню выбора месяца для добавления матча.
+
+    Год тренер не выбирает — бот определит его сам:
+    - если месяц ещё впереди в текущем году, берётся текущий год;
+    - если месяц уже прошёл, берётся следующий год.
+    """
+    keyboard = [
+        ["Январь", "Февраль", "Март"],
+        ["Апрель", "Май", "Июнь"],
+        ["Июль", "Август", "Сентябрь"],
+        ["Октябрь", "Ноябрь", "Декабрь"],
+        ["Назад"],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_game_days_menu(month: int, year: int | None = None):
+    """
+    Меню выбора дня матча для выбранного месяца.
+
+    Если year не передан, бот сам определяет год.
+    """
+    if year is None:
+        year = resolve_year_for_month(month)
+
+    days_in_month = monthrange(year, month)[1]
+
+    keyboard = []
+    row = []
+
+    for day in range(1, days_in_month + 1):
+        row.append(str(day))
+
+        if len(row) == 4:
+            keyboard.append(row)
+            row = []
+
+    if row:
+        keyboard.append(row)
+
+    keyboard.append(["Назад"])
+
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_game_input_cancel_menu():
+    """
+    Меню для шагов ввода:
+    - имя соперника;
+    - время матча;
+    - ссылка на место проведения.
+    """
+    keyboard = [
+        ["Отменить добавление матча"],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_game_time_examples_menu():
+    """
+    Подсказка для ввода времени матча.
+    Тренер может нажать готовый вариант или написать вручную.
+    """
+    keyboard = [
+        ["10:00", "12:00", "14:00"],
+        ["16:00", "18:00", "20:00"],
+        ["Отменить добавление матча"],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_game_location_skip_menu():
+    """
+    Меню для ввода ссылки на место проведения.
+    Можно пропустить, если ссылка пока неизвестна.
+    """
+    keyboard = [
+        ["Пропустить ссылку"],
+        ["Отменить добавление матча"],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def resolve_year_for_month(month: int) -> int:
+    """
+    Автоматически определяет год для выбранного месяца.
+
+    Пример:
+    сейчас май 2026:
+    - июнь -> 2026
+    - декабрь -> 2026
+    - январь -> 2027
+    """
+    now = datetime.now(TIMEZONE)
+
+    if month >= now.month:
+        return now.year
+
+    return now.year + 1
+
+
+def get_month_number_by_name(month_name: str) -> int | None:
+    """
+    Возвращает номер месяца по русскому названию.
+    """
+    normalized = month_name.strip().lower()
+
+    for name, number in MONTHS_RU:
+        if name.lower() == normalized:
+            return number
+
+    return None
+
+
+def get_month_name_by_number(month: int) -> str:
+    """
+    Возвращает русское название месяца по номеру.
+    """
+    for name, number in MONTHS_RU:
+        if number == month:
+            return name
+
+    return str(month)

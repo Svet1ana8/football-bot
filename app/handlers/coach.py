@@ -13,6 +13,14 @@ from app.keyboards import (
     get_games_schedule_menu,
     get_payments_menu,
     get_training_schedule_menu,
+    get_games_month_menu,
+    get_game_days_menu,
+    get_game_input_cancel_menu,
+    get_game_time_examples_menu,
+    get_game_location_skip_menu,
+    get_month_number_by_name,
+    get_month_name_by_number,
+    resolve_year_for_month,
 )
 from app.repositories.game_schedule import (
     add_game_schedule,
@@ -53,6 +61,28 @@ from app.services.trainings import (
 )
 
 
+def reset_game_add_state(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Сбрасывает только временные данные добавления матча.
+    Старые матчи и данные в БД не трогает.
+    """
+    context.user_data["awaiting_game_details"] = False
+    context.user_data["awaiting_game_month"] = False
+    context.user_data["awaiting_game_date"] = False
+    context.user_data["awaiting_game_opponent"] = False
+    context.user_data["awaiting_game_time"] = False
+    context.user_data["awaiting_game_location"] = False
+
+    context.user_data.pop("selected_game_date", None)
+    context.user_data.pop("selected_game_month", None)
+    context.user_data.pop("selected_game_year", None)
+    context.user_data.pop("selected_game_day", None)
+    context.user_data.pop("selected_game_full_date", None)
+    context.user_data.pop("selected_game_opponent", None)
+    context.user_data.pop("selected_game_time", None)
+    context.user_data.pop("selected_game_location_url", None)
+
+
 def get_weekday_name(dt: date) -> str:
     weekdays = {
         0: "Понедельник",
@@ -80,7 +110,7 @@ def format_game_schedule_row(game_date, game_time, opponent_name, comment=None) 
         f"Соперник: {opponent_name}"
     )
     if comment:
-        text += f"\nКомментарий: {comment}"
+        text += f"\nМесто проведения: {comment}"
     return text
 
 
@@ -211,6 +241,37 @@ def build_existing_games_keyboard(schedule, callback_prefix: str) -> list[tuple[
         result.append((title, InlineKeyboardMarkup(rows)))
 
     return result
+
+
+def parse_game_time(raw_text: str) -> time | None:
+    """
+    Принимает 19:00 или 19.00.
+    """
+    value = raw_text.strip()
+    match = re.fullmatch(r"(\d{1,2})[:.](\d{2})", value)
+
+    if not match:
+        return None
+
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+
+    if hour > 23 or minute > 59:
+        return None
+
+    return datetime.strptime(f"{hour:02d}:{minute:02d}", "%H:%M").time()
+
+
+def build_game_created_notification(game_date, game_time, opponent_name, location_url=None) -> str:
+    text = (
+        f"Привет! {game_date.strftime('%d.%m.%Y')} в {game_time.strftime('%H:%M')} "
+        f"у нас будет игра с {opponent_name}."
+    )
+
+    if location_url:
+        text += f"\n\nМесто проведения: {location_url}"
+
+    return text
 
 
 async def test_subscription_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -451,8 +512,7 @@ async def open_games_schedule_menu(update: Update, context: ContextTypes.DEFAULT
         await deny_access(update)
         return
 
-    context.user_data["awaiting_game_details"] = False
-    context.user_data.pop("selected_game_date", None)
+    reset_game_add_state(context)
 
     await update.message.reply_text(
         "Календарь игр. Выбери действие:",
@@ -465,8 +525,7 @@ async def show_games_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE
         await deny_access(update)
         return
 
-    context.user_data["awaiting_game_details"] = False
-    context.user_data.pop("selected_game_date", None)
+    reset_game_add_state(context)
 
     schedule = get_upcoming_game_schedule()
 
@@ -481,19 +540,26 @@ async def show_games_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def start_add_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Новый сценарий:
+    Добавить матч
+    -> выбрать месяц
+    -> выбрать дату
+    -> ввести соперника
+    -> ввести время
+    -> ввести ссылку на место
+    -> сохранить матч
+    """
     if not is_coach(update.effective_user.id):
         await deny_access(update)
         return
 
-    context.user_data["awaiting_game_details"] = False
-    context.user_data.pop("selected_game_date", None)
-
-    today = date.today()
-    keyboard = build_month_dates_keyboard(today.year, today.month, "game_add_date")
+    reset_game_add_state(context)
+    context.user_data["awaiting_game_month"] = True
 
     await update.message.reply_text(
-        "Выбери дату матча:",
-        reply_markup=keyboard
+        "Выбери месяц матча:",
+        reply_markup=get_games_month_menu()
     )
 
 
@@ -502,8 +568,7 @@ async def start_delete_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await deny_access(update)
         return
 
-    context.user_data["awaiting_game_details"] = False
-    context.user_data.pop("selected_game_date", None)
+    reset_game_add_state(context)
 
     schedule = get_upcoming_game_schedule()
 
@@ -520,7 +585,192 @@ async def start_delete_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_game_details_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Пошаговое добавление матча.
+
+    Старый формат "Астана Барс 19:00" больше не требуется,
+    но старый флаг awaiting_game_details оставлен для совместимости.
+    """
     raw_text = update.message.text.strip()
+
+    if raw_text == "Отменить добавление матча":
+        reset_game_add_state(context)
+        await update.message.reply_text(
+            "Добавление матча отменено.",
+            reply_markup=get_games_schedule_menu()
+        )
+        return
+
+    if context.user_data.get("awaiting_game_month"):
+        month = get_month_number_by_name(raw_text)
+
+        if not month:
+            await update.message.reply_text(
+                "Не смог понять месяц. Выбери месяц кнопкой ниже:",
+                reply_markup=get_games_month_menu()
+            )
+            return
+
+        year = resolve_year_for_month(month)
+
+        context.user_data["selected_game_month"] = month
+        context.user_data["selected_game_year"] = year
+        context.user_data["awaiting_game_month"] = False
+        context.user_data["awaiting_game_date"] = True
+
+        month_name = get_month_name_by_number(month)
+
+        await update.message.reply_text(
+            f"Выбран месяц: {month_name} {year}.\n\n"
+            "Теперь выбери дату матча:",
+            reply_markup=get_game_days_menu(month=month, year=year)
+        )
+        return
+
+    if context.user_data.get("awaiting_game_date"):
+        try:
+            day = int(raw_text)
+        except ValueError:
+            await update.message.reply_text("Выбери дату кнопкой ниже.")
+            return
+
+        month = context.user_data.get("selected_game_month")
+        year = context.user_data.get("selected_game_year")
+
+        if not month or not year:
+            reset_game_add_state(context)
+            await update.message.reply_text(
+                "Не удалось определить месяц. Начни добавление матча заново.",
+                reply_markup=get_games_schedule_menu()
+            )
+            return
+
+        _, last_day = calendar.monthrange(year, month)
+
+        if day < 1 or day > last_day:
+            await update.message.reply_text(
+                f"В этом месяце даты {day} нет. Выбери дату из кнопок ниже:",
+                reply_markup=get_game_days_menu(month=month, year=year)
+            )
+            return
+
+        selected_date = date(year, month, day)
+
+        context.user_data["selected_game_day"] = day
+        context.user_data["selected_game_full_date"] = selected_date.isoformat()
+        context.user_data["selected_game_date"] = selected_date.isoformat()
+        context.user_data["awaiting_game_date"] = False
+        context.user_data["awaiting_game_opponent"] = True
+
+        await update.message.reply_text(
+            f"Дата матча: {selected_date.strftime('%d.%m.%Y')}.\n\n"
+            "Введи имя команды соперника:",
+            reply_markup=get_game_input_cancel_menu()
+        )
+        return
+
+    if context.user_data.get("awaiting_game_opponent"):
+        opponent_name = raw_text.strip()
+
+        if len(opponent_name) < 2:
+            await update.message.reply_text(
+                "Название команды слишком короткое. Введи имя команды соперника:"
+            )
+            return
+
+        context.user_data["selected_game_opponent"] = opponent_name
+        context.user_data["awaiting_game_opponent"] = False
+        context.user_data["awaiting_game_time"] = True
+
+        await update.message.reply_text(
+            "Введи время проведения матча.\n\n"
+            "Например: 19:00",
+            reply_markup=get_game_time_examples_menu()
+        )
+        return
+
+    if context.user_data.get("awaiting_game_time"):
+        game_time = parse_game_time(raw_text)
+
+        if not game_time:
+            await update.message.reply_text(
+                "Не смог понять время матча.\n\n"
+                "Используй формат ЧЧ:ММ, например: 19:00",
+                reply_markup=get_game_time_examples_menu()
+            )
+            return
+
+        context.user_data["selected_game_time"] = game_time.strftime("%H:%M")
+        context.user_data["awaiting_game_time"] = False
+        context.user_data["awaiting_game_location"] = True
+
+        await update.message.reply_text(
+            "Введи ссылку на место проведения матча.\n\n"
+            "Например ссылку на 2GIS / Google Maps.\n"
+            "Если ссылки пока нет — нажми «Пропустить ссылку».",
+            reply_markup=get_game_location_skip_menu()
+        )
+        return
+
+    if context.user_data.get("awaiting_game_location"):
+        location_url = raw_text.strip()
+
+        if location_url == "Пропустить ссылку":
+            location_url = None
+
+        selected_game_date = context.user_data.get("selected_game_full_date")
+        selected_game_time = context.user_data.get("selected_game_time")
+        opponent_name = context.user_data.get("selected_game_opponent")
+
+        if not selected_game_date or not selected_game_time or not opponent_name:
+            reset_game_add_state(context)
+            await update.message.reply_text(
+                "Не хватило данных для добавления матча. Начни заново.",
+                reply_markup=get_games_schedule_menu()
+            )
+            return
+
+        game_date = datetime.strptime(selected_game_date, "%Y-%m-%d").date()
+        game_time = datetime.strptime(selected_game_time, "%H:%M").time()
+
+        add_game_schedule(
+            game_date=game_date,
+            game_time=game_time,
+            opponent_name=opponent_name,
+            comment=location_url,
+        )
+
+        reset_game_add_state(context)
+
+        await update.message.reply_text(
+            "✅ Матч добавлен.\n\n"
+            f"{format_game_schedule_row(game_date, game_time, opponent_name, location_url)}",
+            reply_markup=get_games_schedule_menu()
+        )
+
+        approved_users = get_users_by_status("approved")
+        message_text = build_game_created_notification(
+            game_date=game_date,
+            game_time=game_time,
+            opponent_name=opponent_name,
+            location_url=location_url,
+        )
+
+        for player_id, username, first_name in approved_users:
+            if not is_broadcast_recipient(player_id):
+                continue
+
+            try:
+                await context.bot.send_message(
+                    chat_id=player_id,
+                    text=message_text
+                )
+            except Exception:
+                pass
+
+        return
+
+    # Совместимость со старым сценарием.
     selected_game_date = context.user_data.get("selected_game_date")
 
     if not selected_game_date:
@@ -562,26 +812,13 @@ async def handle_game_details_input(update: Update, context: ContextTypes.DEFAUL
         comment=None,
     )
 
-    context.user_data["awaiting_game_details"] = False
-    context.user_data.pop("selected_game_date", None)
+    reset_game_add_state(context)
 
     await update.message.reply_text(
         "✅ Матч добавлен.\n\n"
-        f"{format_game_schedule_row(game_date, game_time, opponent_name)}"
+        f"{format_game_schedule_row(game_date, game_time, opponent_name)}",
+        reply_markup=get_games_schedule_menu()
     )
-
-    approved_users = get_users_by_status("approved")
-    for player_id, username, first_name in approved_users:
-        try:
-            await context.bot.send_message(
-                chat_id=player_id,
-                text=(
-                    f"Привет! {game_date.strftime('%d.%m.%Y')} в {game_time.strftime('%H:%M')} "
-                    f"у нас будет игра с {opponent_name}"
-                )
-            )
-        except Exception:
-            pass
 
 
 async def open_payments_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -940,9 +1177,8 @@ async def back_to_coach_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data["awaiting_training_schedule_add"] = False
     context.user_data["awaiting_training_schedule_delete"] = False
     context.user_data["awaiting_training_schedule_manual_date"] = False
-    context.user_data["awaiting_game_details"] = False
+    reset_game_add_state(context)
     context.user_data.pop("transfer_training_schedule_id", None)
-    context.user_data.pop("selected_game_date", None)
 
     await update.message.reply_text(
         "Возвращаю в главное меню тренера.",
@@ -1084,6 +1320,7 @@ async def show_month_attendance(update: Update, context: ContextTypes.DEFAULT_TY
 
     await update.message.reply_text(text)
 
+
 async def refresh_player_menus(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):
         await deny_access(update)
@@ -1115,12 +1352,13 @@ async def refresh_player_menus(update: Update, context: ContextTypes.DEFAULT_TYP
         f"Ошибок: {fail_count}"
     )
 
+
 async def test_subscription_end_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not is_coach(update.effective_user.id):
-            await deny_access(update)
-            return
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
 
-        from app.services.payments import send_subscription_ending_reminders
+    from app.services.payments import send_subscription_ending_reminders
 
-        await send_subscription_ending_reminders(context)
-        await update.message.reply_text("Тест напоминаний об окончании абонемента выполнен.")
+    await send_subscription_ending_reminders(context)
+    await update.message.reply_text("Тест напоминаний об окончании абонемента выполнен.")

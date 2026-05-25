@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -22,12 +23,12 @@ from app.handlers.coach import (
     show_all_subscriptions,
     show_ending_soon,
     show_games_calendar,
+    show_month_attendance,
     show_payment_history,
     show_training_calendar,
     show_training_responses,
     show_training_status,
     show_unpaid_players,
-    show_month_attendance,
     start_add_game,
     start_add_training_schedule,
     start_delete_game,
@@ -35,6 +36,7 @@ from app.handlers.coach import (
 )
 from app.keyboards import (
     get_approved_player_menu,
+    get_coach_menu,
     get_defense_video_menu,
     get_documents_menu,
     get_offense_video_menu,
@@ -46,20 +48,63 @@ from app.repositories.game_schedule import get_upcoming_game_schedule
 from app.repositories.payments import get_player_bonuses, get_subscription_by_user_id
 from app.repositories.training_schedule import get_upcoming_training_schedule
 from app.repositories.users import add_or_update_user, get_user_by_id
-from app.keyboards import get_coach_menu
 from app.services.access import is_coach
-from app.handlers.coach import deny_access
 from app.services.notifications import notify_coaches_about_request
-from pathlib import Path
 
 
 def reset_coach_temp_state(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Сбрасывает временные состояния тренера.
+
+    Важно:
+    - старые флаги оставлены для совместимости;
+    - добавлены новые флаги для пошагового добавления матча:
+      месяц -> дата -> соперник -> время -> ссылка;
+    - данные по тренировкам и матчам не удаляются из БД.
+    """
     context.user_data["awaiting_training_schedule_add"] = False
     context.user_data["awaiting_training_schedule_delete"] = False
     context.user_data["awaiting_training_schedule_manual_date"] = False
+
+    # Старый флаг добавления матча — оставляем для совместимости
     context.user_data["awaiting_game_details"] = False
+
+    # Новые флаги пошагового добавления матча
+    context.user_data["awaiting_game_month"] = False
+    context.user_data["awaiting_game_date"] = False
+    context.user_data["awaiting_game_opponent"] = False
+    context.user_data["awaiting_game_time"] = False
+    context.user_data["awaiting_game_location"] = False
+
     context.user_data.pop("transfer_training_schedule_id", None)
+
+    # Старое поле — оставляем, но очищаем
     context.user_data.pop("selected_game_date", None)
+
+    # Новые временные данные для добавления матча
+    context.user_data.pop("selected_game_month", None)
+    context.user_data.pop("selected_game_year", None)
+    context.user_data.pop("selected_game_day", None)
+    context.user_data.pop("selected_game_full_date", None)
+    context.user_data.pop("selected_game_opponent", None)
+    context.user_data.pop("selected_game_time", None)
+    context.user_data.pop("selected_game_location_url", None)
+
+
+def is_waiting_for_game_input(context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """
+    Проверяет, находится ли тренер в процессе добавления матча.
+
+    Все эти состояния отправляются в handle_game_details_input().
+    """
+    return (
+        context.user_data.get("awaiting_game_details")
+        or context.user_data.get("awaiting_game_month")
+        or context.user_data.get("awaiting_game_date")
+        or context.user_data.get("awaiting_game_opponent")
+        or context.user_data.get("awaiting_game_time")
+        or context.user_data.get("awaiting_game_location")
+    )
 
 
 def get_days_until_next_payment(payment_day: int) -> int:
@@ -497,6 +542,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         await open_games_schedule_menu(update, context)
         return
 
@@ -517,6 +563,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         await show_games_calendar(update, context)
         return
 
@@ -526,6 +573,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         await start_add_game(update, context)
         return
 
@@ -535,6 +583,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         await start_delete_game(update, context)
         return
 
@@ -544,6 +593,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         await open_training_schedule_menu(update, context)
         return
 
@@ -553,6 +603,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         await show_training_calendar(update, context)
         return
 
@@ -562,6 +613,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         await start_add_training_schedule(update, context)
         return
 
@@ -571,10 +623,14 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         await start_delete_training_schedule(update, context)
         return
 
-    if is_coach(user.id) and context.user_data.get("awaiting_game_details"):
+    # Новый пошаговый сценарий добавления матча:
+    # месяц -> дата -> соперник -> время -> ссылка.
+    # Старый awaiting_game_details тоже оставлен.
+    if is_coach(user.id) and is_waiting_for_game_input(context):
         await handle_game_details_input(update, context)
         return
 
@@ -744,6 +800,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await coach(update, context)
         return
@@ -752,6 +809,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await approved(update, context)
         return
@@ -760,6 +818,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await send_payment_reminder_by_month(update, context)
         return
@@ -776,6 +835,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await show_training_responses(update, context)
         return
@@ -784,6 +844,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await show_training_status(update, context)
         return
@@ -792,6 +853,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await show_month_attendance(update, context)
         return
@@ -800,6 +862,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await open_payments_menu(update, context)
         return
@@ -808,6 +871,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await show_ending_soon(update, context)
         return
@@ -816,6 +880,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await show_unpaid_players(update, context)
         return
@@ -824,6 +889,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await open_mark_payment(update, context)
         return
@@ -832,6 +898,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await show_all_subscriptions(update, context)
         return
@@ -840,6 +907,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await show_payment_history(update, context)
         return
@@ -848,6 +916,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await open_subscription_type_menu(update, context)
         return
@@ -856,6 +925,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
+
         reset_coach_temp_state(context)
         await refresh_player_menus(update, context)
         return
