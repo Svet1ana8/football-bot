@@ -1,4 +1,5 @@
-from datetime import datetime, time, timedelta
+import calendar
+from datetime import date, datetime, time, timedelta
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -8,12 +9,14 @@ from app.config import (
     TRAINING_TIME,
     TIMEZONE,
 )
+from app.db import get_connection
 from app.repositories.trainings import (
     cancel_active_training,
     create_training,
     create_training_reminder_log,
     deactivate_training,
     get_active_training,
+    get_month_no_response_stats,
     get_training_responses,
     get_user_response_for_training,
     save_training_response,
@@ -60,6 +63,15 @@ TRAINING_CONFIRMATION_END_TIME = time(18, 59)
 TRAINING_COACH_REPORT_START_TIME = time(19, 0)
 TRAINING_COACH_REPORT_END_TIME = time(19, 59)
 
+# Отчёт тренеру по игрокам, которые часто не отвечают.
+# Проверка идёт каждые 5 минут через training_repeat_job,
+# но фактическая отправка ограничена окном 12:00–12:59 и логом в БД.
+NO_RESPONSE_STATS_REPORT_START_TIME = time(12, 0)
+NO_RESPONSE_STATS_REPORT_END_TIME = time(12, 59)
+
+# Чтобы отчёт не был слишком длинным в Telegram.
+NO_RESPONSE_STATS_MAX_PLAYERS = 30
+
 
 def get_coach_ids_from_config() -> list[int]:
     """
@@ -90,6 +102,122 @@ def get_coach_ids_from_config() -> list[int]:
             continue
 
     return coach_ids
+
+
+def ensure_no_response_report_logs_schema():
+    """
+    Таблица логов для отчёта "кто часто не отвечает".
+
+    Нужна, чтобы бот не отправлял один и тот же отчёт каждые 5 минут
+    в течение окна 12:00–12:59.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS no_response_report_logs (
+                    id SERIAL PRIMARY KEY,
+                    report_date DATE NOT NULL,
+                    report_type TEXT NOT NULL,
+                    success_count INTEGER NOT NULL DEFAULT 0,
+                    fail_count INTEGER NOT NULL DEFAULT 0,
+                    sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE(report_date, report_type)
+                )
+            """)
+
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_no_response_report_logs_date_type
+                ON no_response_report_logs(report_date, report_type)
+            """)
+
+        conn.commit()
+
+
+def was_no_response_report_sent(report_date: date, report_type: str) -> bool:
+    """
+    Проверяет, был ли уже отправлен отчёт за конкретную дату и тип.
+    """
+    ensure_no_response_report_logs_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 1
+                FROM no_response_report_logs
+                WHERE report_date = %s
+                  AND report_type = %s
+                LIMIT 1
+            """, (
+                report_date,
+                report_type,
+            ))
+
+            return cur.fetchone() is not None
+
+
+def mark_no_response_report_sent(
+    report_date: date,
+    report_type: str,
+    success_count: int,
+    fail_count: int,
+):
+    """
+    Фиксирует, что отчёт был отправлен.
+    """
+    ensure_no_response_report_logs_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO no_response_report_logs (
+                    report_date,
+                    report_type,
+                    success_count,
+                    fail_count
+                )
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (report_date, report_type)
+                DO NOTHING
+            """, (
+                report_date,
+                report_type,
+                success_count,
+                fail_count,
+            ))
+
+        conn.commit()
+
+
+def get_no_response_report_type_for_today(now: datetime) -> str | None:
+    """
+    Отчёт отправляется:
+    - 15 числа каждого месяца;
+    - 30 числа каждого месяца;
+    - если в месяце меньше 30 дней, то в последний день месяца.
+
+    Пример:
+    - январь: 15 и 30
+    - февраль 2026: 15 и 28
+    - февраль 2028: 15 и 29
+    - апрель: 15 и 30
+    """
+    last_day = calendar.monthrange(now.year, now.month)[1]
+    second_report_day = min(30, last_day)
+
+    if now.day == 15:
+        return "mid_month"
+
+    if now.day == second_report_day:
+        return "month_end"
+
+    return None
+
+
+def is_within_no_response_stats_report_window(now: datetime) -> bool:
+    """
+    Отчёт по неответившим отправляем в окне 12:00–12:59.
+    """
+    return NO_RESPONSE_STATS_REPORT_START_TIME <= now.time() <= NO_RESPONSE_STATS_REPORT_END_TIME
 
 
 def unpack_training(active_training):
@@ -507,6 +635,67 @@ def build_coach_training_report_text(training) -> str:
     return text
 
 
+def build_month_no_response_report_text(
+    report_date: date,
+    report_type: str,
+) -> str:
+    """
+    Формирует отчёт тренеру по игрокам, которые не отвечают на голосования.
+    """
+    stats = get_month_no_response_stats(
+        year=report_date.year,
+        month=report_date.month,
+        until_date=report_date,
+    )
+
+    period_start = date(report_date.year, report_date.month, 1)
+    period_text = f"{period_start.strftime('%d.%m.%Y')} — {report_date.strftime('%d.%m.%Y')}"
+
+    if report_type == "mid_month":
+        title = "⚠️ Промежуточный отчёт по неответившим"
+    else:
+        title = "⚠️ Итоговый отчёт по неответившим"
+
+    if not stats:
+        return (
+            f"{title}\n\n"
+            f"Период: {period_text}\n\n"
+            "✅ Нет игроков, которые игнорировали голосования."
+        )
+
+    text = (
+        f"{title}\n\n"
+        f"Период: {period_text}\n\n"
+        "Игроки, которые не отвечали на голосования:\n\n"
+    )
+
+    shown_count = 0
+
+    for index, row in enumerate(stats, start=1):
+        user_id, username, first_name, no_response_count, total_trainings = row
+
+        name = first_name or str(user_id)
+
+        if username:
+            name += f" (@{username})"
+
+        text += (
+            f"{index}. {name} — "
+            f"{no_response_count} из {total_trainings}\n"
+        )
+
+        shown_count += 1
+
+        if shown_count >= NO_RESPONSE_STATS_MAX_PLAYERS:
+            remaining = len(stats) - shown_count
+
+            if remaining > 0:
+                text += f"\nИ ещё игроков: {remaining}"
+            break
+
+    return text
+
+
 def get_training_keyboard(training_id: int):
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("✅ Приду", callback_data=f"training_yes_{training_id}"),
@@ -869,6 +1058,79 @@ async def send_coach_training_report(context: ContextTypes.DEFAULT_TYPE):
     }
 
 
+async def send_monthly_no_response_report(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Отправляет тренеру отчёт по игрокам, которые часто не отвечают.
+
+    Правило:
+    - 15 числа каждого месяца;
+    - 30 числа каждого месяца;
+    - если в месяце меньше 30 дней, то в последний день месяца;
+    - отправка в окне 12:00–12:59;
+    - только тренерам;
+    - игрокам ничего не отправляется.
+    """
+    now = datetime.now(TIMEZONE)
+
+    if not is_within_no_response_stats_report_window(now):
+        return None
+
+    report_type = get_no_response_report_type_for_today(now)
+
+    if not report_type:
+        return None
+
+    report_date = now.date()
+
+    if was_no_response_report_sent(report_date, report_type):
+        return None
+
+    coach_ids = get_coach_ids_from_config()
+
+    if not coach_ids:
+        print("COACH_IDS is empty or not configured. No-response report was not sent.")
+        return None
+
+    text = build_month_no_response_report_text(
+        report_date=report_date,
+        report_type=report_type,
+    )
+
+    success_count = 0
+    fail_count = 0
+
+    for coach_id in coach_ids:
+        try:
+            await context.bot.send_message(
+                chat_id=coach_id,
+                text=text,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Ошибка отправки отчёта по неответившим тренеру {coach_id}: {e}")
+            fail_count += 1
+
+    if success_count > 0:
+        mark_no_response_report_sent(
+            report_date=report_date,
+            report_type=report_type,
+            success_count=success_count,
+            fail_count=fail_count,
+        )
+
+    print(
+        f"No-response report {report_date} / {report_type}: "
+        f"sent to {success_count} coaches, failed: {fail_count}."
+    )
+
+    return {
+        "report_date": report_date,
+        "report_type": report_type,
+        "success_count": success_count,
+        "fail_count": fail_count,
+    }
+
+
 async def send_manual_training_reminder(
     context: ContextTypes.DEFAULT_TYPE,
     coach_user_id: int | None = None,
@@ -1072,11 +1334,15 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
     3. В день тренировки:
        авто-отчёт тренеру с итогами в 19:00–19:59.
 
-    Эти логики используют разные поля в БД и не конфликтуют.
+    4. 15 числа и 30 числа / последний день короткого месяца:
+       отчёт тренеру по игрокам, которые часто не отвечают.
+
+    Эти логики используют разные поля/логи в БД и не конфликтуют.
     """
     await send_auto_training_reminder(context)
     await send_training_day_no_response_reminder(context)
     await send_coach_training_report(context)
+    await send_monthly_no_response_report(context)
 
 
 async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
@@ -1242,8 +1508,8 @@ def schedule_training_repeat_job(application):
         return
 
     # Проверяем каждые 5 минут, чтобы не пропустить окно после рестарта.
-    # Фактическая отправка авто-напоминаний, напоминаний неответившим
-    # и авто-отчёта тренеру ограничена отдельными полями в БД.
+    # Фактическая отправка авто-напоминаний, напоминаний неответившим,
+    # авто-отчёта тренеру и отчёта по неответившим ограничена полями/логами в БД.
     application.job_queue.run_repeating(
         repeat_training_reminder_job,
         interval=timedelta(minutes=5),

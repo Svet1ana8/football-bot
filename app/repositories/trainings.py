@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from app.db import get_connection
 
@@ -583,6 +583,122 @@ def get_month_attendance_stats(year: int, month: int):
             """, (
                 year,
                 month,
+            ))
+
+            return cur.fetchall()
+
+
+def get_month_no_response_stats(year: int, month: int, until_date: date | None = None):
+    """
+    Статистика игроков, которые не отвечали на голосования за месяц.
+
+    Считает approved-игроков и тренировки за выбранный месяц.
+
+    Логика:
+    - берём всех approved игроков;
+    - берём все тренировки за месяц до until_date включительно;
+    - если у игрока нет строки в training_responses по training_id,
+      значит он не ответил;
+    - отменённые тренировки не считаем.
+
+    until_date нужен для отчёта 15 числа:
+    например 15.06 считаем только тренировки с 01.06 по 15.06.
+    Для отчёта в последний день месяца считаем весь месяц.
+    """
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            if until_date:
+                cur.execute("""
+                    SELECT
+                        u.user_id,
+                        u.username,
+                        u.first_name,
+                        COUNT(*) FILTER (WHERE tr.user_id IS NULL) AS no_response_count,
+                        COUNT(*) AS total_trainings
+                    FROM users u
+                    CROSS JOIN trainings t
+                    LEFT JOIN training_responses tr
+                        ON tr.training_id = t.id
+                       AND tr.user_id = u.user_id
+                    WHERE u.status = 'approved'
+                      AND EXTRACT(YEAR FROM t.start_time) = %s
+                      AND EXTRACT(MONTH FROM t.start_time) = %s
+                      AND DATE(t.start_time) <= %s
+                      AND t.cancelled_at IS NULL
+                    GROUP BY u.user_id, u.username, u.first_name
+                    HAVING COUNT(*) FILTER (WHERE tr.user_id IS NULL) > 0
+                    ORDER BY no_response_count DESC, u.first_name NULLS LAST, u.user_id
+                """, (
+                    year,
+                    month,
+                    until_date,
+                ))
+            else:
+                cur.execute("""
+                    SELECT
+                        u.user_id,
+                        u.username,
+                        u.first_name,
+                        COUNT(*) FILTER (WHERE tr.user_id IS NULL) AS no_response_count,
+                        COUNT(*) AS total_trainings
+                    FROM users u
+                    CROSS JOIN trainings t
+                    LEFT JOIN training_responses tr
+                        ON tr.training_id = t.id
+                       AND tr.user_id = u.user_id
+                    WHERE u.status = 'approved'
+                      AND EXTRACT(YEAR FROM t.start_time) = %s
+                      AND EXTRACT(MONTH FROM t.start_time) = %s
+                      AND t.cancelled_at IS NULL
+                    GROUP BY u.user_id, u.username, u.first_name
+                    HAVING COUNT(*) FILTER (WHERE tr.user_id IS NULL) > 0
+                    ORDER BY no_response_count DESC, u.first_name NULLS LAST, u.user_id
+                """, (
+                    year,
+                    month,
+                ))
+
+            return cur.fetchall()
+
+
+def get_period_no_response_stats(start_date: date, end_date: date):
+    """
+    Статистика неответивших за произвольный период.
+
+    Нужна на будущее, если захочешь отчёты не только за месяц,
+    а например за сезон или за последние 30 дней.
+
+    Диапазон включительный:
+    start_date <= training_date <= end_date
+    """
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    u.user_id,
+                    u.username,
+                    u.first_name,
+                    COUNT(*) FILTER (WHERE tr.user_id IS NULL) AS no_response_count,
+                    COUNT(*) AS total_trainings
+                FROM users u
+                CROSS JOIN trainings t
+                LEFT JOIN training_responses tr
+                    ON tr.training_id = t.id
+                   AND tr.user_id = u.user_id
+                WHERE u.status = 'approved'
+                  AND DATE(t.start_time) >= %s
+                  AND DATE(t.start_time) <= %s
+                  AND t.cancelled_at IS NULL
+                GROUP BY u.user_id, u.username, u.first_name
+                HAVING COUNT(*) FILTER (WHERE tr.user_id IS NULL) > 0
+                ORDER BY no_response_count DESC, u.first_name NULLS LAST, u.user_id
+            """, (
+                start_date,
+                end_date,
             ))
 
             return cur.fetchall()
