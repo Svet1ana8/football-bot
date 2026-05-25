@@ -132,10 +132,10 @@ async def send_payment_reminder_by_month_text(context: ContextTypes.DEFAULT_TYPE
     return message_text, success_count, fail_count
 
 
-async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE):
+async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE, force_send: bool = False):
     now = datetime.now(TIMEZONE)
 
-    if not is_vote_day(now):
+    if not is_vote_day(now) and not force_send:
         return None
 
     active_training = get_active_training()
@@ -145,7 +145,38 @@ async def start_training_reminder(context: ContextTypes.DEFAULT_TYPE):
 
         if stop_at and now >= stop_at:
             deactivate_training(training_id)
+            active_training = None
         else:
+            if force_send:
+                approved_users = get_users_by_status("approved")
+                keyboard = get_training_keyboard(training_id)
+
+                success_count = 0
+                fail_count = 0
+
+                for user_id, username, first_name in approved_users:
+                    if not is_broadcast_recipient(user_id):
+                        continue
+
+                    try:
+                        await context.bot.send_message(
+                            chat_id=user_id,
+                            text=message_text,
+                            reply_markup=keyboard,
+                        )
+                        success_count += 1
+                    except Exception:
+                        fail_count += 1
+
+                update_training_last_reminder(training_id, now)
+
+                return {
+                    "training_id": training_id,
+                    "success_count": success_count,
+                    "fail_count": fail_count,
+                    "stop_at": stop_at,
+                }
+
             if start_time and start_time.astimezone(TIMEZONE).date() == now.date():
                 return None
 

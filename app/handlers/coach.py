@@ -423,31 +423,18 @@ async def send_training_reminder(update: Update, context: ContextTypes.DEFAULT_T
         await deny_access(update)
         return
 
-    now_local = datetime.now(TIMEZONE)
+    from app.services.trainings import start_training_reminder
 
-    close_hour, close_minute = map(int, TRAINING_VOTE_CLOSE_TIME.split(":"))
-    vote_close_time = time(close_hour, close_minute)
+    result = await start_training_reminder(context, force_send=True)
 
-    if now_local.time() >= vote_close_time:
-        await update.message.reply_text(
-            f"После {TRAINING_VOTE_CLOSE_TIME} напоминание о тренировке запускать нельзя. "
-            "Если нужно, запусти его заранее до начала тренировки."
-        )
+    if not result:
+        await update.message.reply_text("Не удалось отправить напоминание о тренировке.")
         return
-
-    result = await start_training_reminder(context)
-
-    if result is None:
-        await update.message.reply_text("Напоминание уже запущено.")
-        return
-
-    schedule_training_repeat_job(context.application)
 
     await update.message.reply_text(
         f"Напоминание о тренировке отправлено.\n"
-        f"Успешно: {result['success_count']}\n"
-        f"Ошибок: {result['fail_count']}\n"
-        f"Повторы будут отправляться каждые {TRAINING_REMINDER_REPEAT_MINUTES} мин до {result['stop_at'].strftime('%H:%M')}."
+        f"Отправлено: {result['success_count']}\n"
+        f"Не отправлено: {result['fail_count']}"
     )
 
 

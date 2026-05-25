@@ -744,7 +744,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_coach(update.effective_user.id):
             await deny_access(update)
             return
-        reset_coach_temp_state(context)
+
         await send_training_reminder(update, context)
         return
 
