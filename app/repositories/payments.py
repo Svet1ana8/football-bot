@@ -53,7 +53,11 @@ def create_subscription_for_user(
                     referral_bonus
                 )
                 VALUES (%s, %s, %s, %s, NULL, FALSE, FALSE, FALSE, FALSE, FALSE)
-                ON CONFLICT (user_id) DO NOTHING
+                ON CONFLICT (user_id) DO UPDATE
+                SET
+                    payment_day = EXCLUDED.payment_day,
+                    subscription_type = EXCLUDED.subscription_type,
+                    subscription_end_date = EXCLUDED.subscription_end_date
             """, (user_id, payment_day, subscription_type, initial_end_date))
         conn.commit()
 
