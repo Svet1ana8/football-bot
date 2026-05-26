@@ -1023,9 +1023,15 @@ async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
     - Воскресенье / Вторник / Четверг;
     - с 09:00 до 23:00;
     - каждый час;
-    - всем игрокам со статусом approved.
+    - только approved игрокам;
+    - только тем, кто ещё НЕ ответил на голосование.
 
-    Не трогает нестандартные активные тренировки.
+    Важно:
+    - если игрок уже нажал "Приду" или "Не приду",
+      повторное часовое напоминание ему не отправляется;
+    - ответы в БД не удаляются;
+    - training_id не меняется;
+    - ручная кнопка тренера не ломается.
     """
     now = datetime.now(TIMEZONE)
 
@@ -1050,9 +1056,16 @@ async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
 
     success_count = 0
     fail_count = 0
+    skipped_answered_count = 0
 
     for user_id, username, first_name in approved_users:
         if not is_broadcast_recipient(user_id):
+            continue
+
+        existing_response = get_user_response_for_training(training_id, user_id)
+
+        if existing_response:
+            skipped_answered_count += 1
             continue
 
         try:
@@ -1075,13 +1088,15 @@ async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
 
     print(
         f"Training #{training_id}: auto reminder sent to "
-        f"{success_count} players, failed: {fail_count}."
+        f"{success_count} players, skipped answered: {skipped_answered_count}, "
+        f"failed: {fail_count}."
     )
 
     return {
         "training_id": training_id,
         "success_count": success_count,
         "fail_count": fail_count,
+        "skipped_answered_count": skipped_answered_count,
         "stop_at": stop_at,
     }
 
