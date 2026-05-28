@@ -230,12 +230,11 @@ def build_existing_games_keyboard(schedule, callback_prefix: str) -> list[tuple[
 
 def is_deleted_schedule_active_training(training_date: date, training_time) -> bool:
     """
-    Проверяет, совпадает ли удаляемая тренировка из календаря
-    с текущей активной тренировкой в trainings.
+    Проверяет, относится ли удаляемая тренировка из календаря
+    к текущей активной тренировке в trainings.
 
-    Работает для двух случаев:
-    - тренер отменяет тренировку за день до неё;
-    - тренер отменяет тренировку в день тренировки.
+    Сравниваем по дате, а не строго по времени,
+    чтобы отмена не ломалась из-за timezone/секунд/разницы формата времени.
     """
     active_training = get_active_training()
 
@@ -249,11 +248,7 @@ def is_deleted_schedule_active_training(training_date: date, training_time) -> b
 
     active_local = active_start_time.astimezone(TIMEZONE)
 
-    return (
-        active_local.date() == training_date
-        and active_local.time().replace(second=0, microsecond=0)
-        == training_time.replace(second=0, microsecond=0)
-    )
+    return active_local.date() == training_date
 
 
 def build_training_cancelled_message(training_date: date, training_time) -> str:
