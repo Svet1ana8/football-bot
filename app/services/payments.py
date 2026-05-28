@@ -1,3 +1,4 @@
+import calendar
 from datetime import datetime, time
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -8,10 +9,13 @@ from app.config import (
     TIMEZONE,
 )
 from app.repositories.payments import (
+    add_payment_history,
     get_overdue_subscription_end_with_users,
     get_payment_due_today_with_users,
     get_subscriptions_ending_soon_with_users,
+    get_unpaid_subscriptions_with_users,
 )
+from app.repositories.users import add_or_update_user, get_user_by_id
 from app.services.access import is_broadcast_recipient
 from app.utils.dates import get_month_name_prepositional
 
@@ -47,6 +51,70 @@ def build_payment_reminder_message() -> str:
         f"Добрый вечер. Напоминаем об оплате абонемента в {month_name}. "
         "Пожалуйста, произведите оплату."
     )
+
+def is_last_day_of_month(today) -> bool:
+    last_day = calendar.monthrange(today.year, today.month)[1]
+    return today.day == last_day
+
+
+def is_payment_collection_period(today) -> bool:
+    """
+    Период жёстких напоминаний:
+    с 28 числа до последнего дня месяца включительно.
+    """
+    last_day = calendar.monthrange(today.year, today.month)[1]
+    return 28 <= today.day <= last_day
+
+
+def build_final_payment_warning_message() -> str:
+    return (
+        "Вы не оплатили месячный абонемент в команду по Американскому футболу "
+        "«ФЕНИКСЫ». Сегодня вы будете удалены из команды."
+    )
+
+
+def build_removed_from_team_message() -> str:
+    return "Вы были удалены из команды."
+
+
+def get_unpaid_monthly_players(today):
+    """
+    Возвращает approved-игроков, которые не оплатили месячный абонемент.
+
+    Берём из get_unpaid_subscriptions_with_users(today):
+    - payment_day <= today.day
+    - is_paid_current_period = FALSE
+    - status = approved
+
+    Дополнительно фильтруем только monthly.
+    """
+    subscriptions = get_unpaid_subscriptions_with_users(today)
+
+    result = []
+
+    for row in subscriptions:
+        (
+            user_id,
+            username,
+            first_name,
+            payment_day,
+            subscription_type,
+            subscription_end_date,
+            last_payment_date,
+            is_paid_current_period,
+            _has_custom_schedule,
+            payment_claimed,
+        ) = row
+
+        if subscription_type != "monthly":
+            continue
+
+        if is_paid_current_period:
+            continue
+
+        result.append(row)
+
+    return result
 
 
 def build_subscription_overdue_message(first_name: str | None, overdue_days: int) -> str:
@@ -265,6 +333,193 @@ async def send_payment_due_today_reminders(context: ContextTypes.DEFAULT_TYPE):
         f"Ошибок: {fail_count}"
     )
 
+async def send_payment_collection_hourly_reminders(context: ContextTypes.DEFAULT_TYPE):
+    """
+    С 28 числа до последнего дня месяца каждый час отправляет
+    обычное напоминание об оплате тем, кто не оплатил месячный абонемент.
+
+    На последнем дне месяца с 18:00 до 21:00 обычную напоминалку не шлём,
+    потому что в это время уходит финальное предупреждение.
+    """
+    now = datetime.now(TIMEZONE)
+    today = now.date()
+
+    if not is_payment_collection_period(today):
+        return
+
+    if is_last_day_of_month(today) and 18 <= now.hour <= 21:
+        return
+
+    subscriptions = get_unpaid_monthly_players(today)
+
+    if not subscriptions:
+        print("Нет игроков для часового напоминания об оплате.")
+        return
+
+    success_count = 0
+    fail_count = 0
+    message_text = build_payment_reminder_message()
+    reply_markup = get_payment_keyboard()
+
+    for (
+        user_id,
+        username,
+        first_name,
+        payment_day,
+        subscription_type,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) in subscriptions:
+        if not is_broadcast_recipient(user_id):
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=message_text,
+                reply_markup=reply_markup,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить часовое напоминание об оплате игроку {user_id}: {e}")
+            fail_count += 1
+
+    print(
+        f"Часовых напоминаний об оплате отправлено: {success_count}. "
+        f"Ошибок: {fail_count}"
+    )
+
+async def send_final_payment_warning_reminders(context: ContextTypes.DEFAULT_TYPE):
+    """
+    В последний день месяца с 18:00 до 21:00 каждый час отправляет
+    финальное предупреждение только тем, кто не оплатил месячный абонемент.
+    """
+    today = datetime.now(TIMEZONE).date()
+
+    if not is_last_day_of_month(today):
+        return
+
+    subscriptions = get_unpaid_monthly_players(today)
+
+    if not subscriptions:
+        print("Нет игроков для финального предупреждения об оплате.")
+        return
+
+    success_count = 0
+    fail_count = 0
+    message_text = build_final_payment_warning_message()
+    reply_markup = get_payment_keyboard()
+
+    for (
+        user_id,
+        username,
+        first_name,
+        payment_day,
+        subscription_type,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) in subscriptions:
+        if not is_broadcast_recipient(user_id):
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=message_text,
+                reply_markup=reply_markup,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить финальное предупреждение игроку {user_id}: {e}")
+            fail_count += 1
+
+    print(
+        f"Финальных предупреждений отправлено: {success_count}. "
+        f"Ошибок: {fail_count}"
+    )
+
+async def remove_unpaid_players_from_team(context: ContextTypes.DEFAULT_TYPE):
+    """
+    В последний день месяца удаляет из команды тех, кто не оплатил месячный абонемент.
+
+    Важно:
+    - физически из базы НЕ удаляем;
+    - меняем status на removed_payment;
+    - история ответов, оплат и тренировок остаётся;
+    - игрок больше не считается approved и не получает командные рассылки.
+    """
+    today = datetime.now(TIMEZONE).date()
+
+    if not is_last_day_of_month(today):
+        return
+
+    subscriptions = get_unpaid_monthly_players(today)
+
+    if not subscriptions:
+        print("Нет игроков для удаления из команды за неоплату.")
+        return
+
+    success_count = 0
+    fail_count = 0
+
+    for (
+        user_id,
+        username,
+        first_name,
+        payment_day,
+        subscription_type,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) in subscriptions:
+        existing_user = get_user_by_id(user_id)
+
+        if not existing_user:
+            continue
+
+        saved_username = existing_user[1]
+        saved_first_name = existing_user[2]
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=build_removed_from_team_message(),
+            )
+        except Exception as e:
+            print(f"Не удалось отправить сообщение об удалении игроку {user_id}: {e}")
+
+        try:
+            add_or_update_user(
+                user_id=user_id,
+                username=saved_username,
+                first_name=saved_first_name,
+                status="removed_payment",
+            )
+
+            add_payment_history(
+                user_id=user_id,
+                action="removed_due_to_non_payment",
+                comment="Игрок удалён из команды за неоплату месячного абонемента",
+            )
+
+            success_count += 1
+        except Exception as e:
+            print(f"Не удалось удалить игрока {user_id} из команды за неоплату: {e}")
+            fail_count += 1
+
+    print(
+        f"Удалено из команды за неоплату: {success_count}. "
+        f"Ошибок: {fail_count}"
+    )
+
 
 def schedule_daily_payment_jobs(application):
     """
@@ -303,6 +558,57 @@ def schedule_daily_payment_jobs(application):
         ("subscription_end_reminders_1d_20", time(20, 0, tzinfo=TIMEZONE), {1}),
         ("subscription_end_reminders_1d_23_30", time(23, 30, tzinfo=TIMEZONE), {1}),
     ]
+
+    payment_collection_hourly_schedule = [
+        ("payment_collection_hourly_10", time(10, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_11", time(11, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_12", time(12, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_13", time(13, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_14", time(14, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_15", time(15, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_16", time(16, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_17", time(17, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_18", time(18, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_19", time(19, 0, tzinfo=TIMEZONE)),
+        ("payment_collection_hourly_20", time(20, 0, tzinfo=TIMEZONE)),
+    ]
+
+    for job_name, job_time in payment_collection_hourly_schedule:
+        existing_jobs = application.job_queue.get_jobs_by_name(job_name)
+        if existing_jobs:
+            continue
+
+        application.job_queue.run_daily(
+            send_payment_collection_hourly_reminders,
+            time=job_time,
+            name=job_name,
+        )
+
+    final_payment_warning_schedule = [
+        ("final_payment_warning_18", time(18, 0, tzinfo=TIMEZONE)),
+        ("final_payment_warning_19", time(19, 0, tzinfo=TIMEZONE)),
+        ("final_payment_warning_20", time(20, 0, tzinfo=TIMEZONE)),
+        ("final_payment_warning_21", time(21, 0, tzinfo=TIMEZONE)),
+    ]
+
+    for job_name, job_time in final_payment_warning_schedule:
+        existing_jobs = application.job_queue.get_jobs_by_name(job_name)
+        if existing_jobs:
+            continue
+
+        application.job_queue.run_daily(
+            send_final_payment_warning_reminders,
+            time=job_time,
+            name=job_name,
+        )
+
+    existing_remove_unpaid_jobs = application.job_queue.get_jobs_by_name("remove_unpaid_players_from_team")
+    if not existing_remove_unpaid_jobs:
+        application.job_queue.run_daily(
+            remove_unpaid_players_from_team,
+            time=time(21, 30, tzinfo=TIMEZONE),
+            name="remove_unpaid_players_from_team",
+        )
 
     for job_name, job_time, job_days in reminder_schedule:
         existing_jobs = application.job_queue.get_jobs_by_name(job_name)
