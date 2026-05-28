@@ -44,7 +44,7 @@ def build_subscription_ending_message(first_name: str | None, days_left: int) ->
 def build_payment_reminder_message() -> str:
     month_name = get_month_name_prepositional(datetime.now(TIMEZONE))
     return (
-        f"Добрый вечер. Напоминаем об оплате абонемента за {month_name}. "
+        f"Добрый вечер. Напоминаем об оплате абонемента в {month_name}. "
         "Пожалуйста, произведите оплату."
     )
 
