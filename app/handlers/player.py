@@ -334,12 +334,21 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         payment_claimed,
     ) = subscription
 
+    today = date.today()
+
     paid_text = "да" if is_paid_current_period else "нет"
-    days_left = get_days_until_next_payment(payment_day)
+
+    if subscription_end_date:
+        days_left = (subscription_end_date - today).days
+        if days_left < 0:
+            days_left = 0
+    else:
+        days_left = get_days_until_next_payment(payment_day)
 
     await update.message.reply_text(
         "💳 Статус оплаты\n\n"
         f"Оплачено: {paid_text}\n"
+        f"Абонемент до: {subscription_end_date.strftime('%d.%m.%Y') if subscription_end_date else 'не указано'}\n"
         f"Осталось дней: {days_left}"
     )
 
