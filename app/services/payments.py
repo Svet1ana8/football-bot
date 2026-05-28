@@ -5,6 +5,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from app.config import (
+    COACH_IDS,
     SUBSCRIPTION_END_REMINDER_DAYS,
     TIMEZONE,
 )
@@ -76,7 +77,6 @@ def build_final_payment_warning_message() -> str:
 def build_removed_from_team_message() -> str:
     return "Вы были удалены из команды."
 
-
 def get_unpaid_monthly_players(today):
     """
     Возвращает approved-игроков, которые не оплатили месячный абонемент.
@@ -115,6 +115,52 @@ def get_unpaid_monthly_players(today):
         result.append(row)
 
     return result
+
+def build_removed_players_coach_report(removed_players: list[str]) -> str:
+    if not removed_players:
+        return (
+            "✅ Автоудаление за неоплату выполнено.\n\n"
+            "Удалённых игроков нет."
+        )
+
+    text = (
+        "⚠️ Автоудаление игроков за неоплату\n\n"
+        "Следующие игроки были удалены из команды:\n\n"
+    )
+
+    for index, player_name in enumerate(removed_players, start=1):
+        text += f"{index}. {player_name}\n"
+
+    return text
+
+async def notify_coaches_about_removed_players(
+    context: ContextTypes.DEFAULT_TYPE,
+    removed_players: list[str],
+):
+    """
+    Отправляет тренерам отчёт о том, кого бот удалил за неоплату.
+    """
+    if not COACH_IDS:
+        print("COACH_IDS is empty. Removed players report was not sent.")
+        return 0, 0
+
+    message_text = build_removed_players_coach_report(removed_players)
+
+    success_count = 0
+    fail_count = 0
+
+    for coach_id in COACH_IDS:
+        try:
+            await context.bot.send_message(
+                chat_id=int(coach_id),
+                text=message_text,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить отчёт об удалённых игроках тренеру {coach_id}: {e}")
+            fail_count += 1
+
+    return success_count, fail_count
 
 
 def build_subscription_overdue_message(first_name: str | None, overdue_days: int) -> str:
@@ -452,7 +498,8 @@ async def remove_unpaid_players_from_team(context: ContextTypes.DEFAULT_TYPE):
     - физически из базы НЕ удаляем;
     - меняем status на removed_payment;
     - история ответов, оплат и тренировок остаётся;
-    - игрок больше не считается approved и не получает командные рассылки.
+    - игрок больше не считается approved и не получает командные рассылки;
+    - тренеру отправляется отчёт со списком удалённых игроков.
     """
     today = datetime.now(TIMEZONE).date()
 
@@ -463,10 +510,15 @@ async def remove_unpaid_players_from_team(context: ContextTypes.DEFAULT_TYPE):
 
     if not subscriptions:
         print("Нет игроков для удаления из команды за неоплату.")
+        await notify_coaches_about_removed_players(
+            context=context,
+            removed_players=[],
+        )
         return
 
     success_count = 0
     fail_count = 0
+    removed_players = []
 
     for (
         user_id,
@@ -487,6 +539,10 @@ async def remove_unpaid_players_from_team(context: ContextTypes.DEFAULT_TYPE):
 
         saved_username = existing_user[1]
         saved_first_name = existing_user[2]
+
+        player_name = saved_first_name or str(user_id)
+        if saved_username:
+            player_name += f" (@{saved_username})"
 
         try:
             await context.bot.send_message(
@@ -510,14 +566,22 @@ async def remove_unpaid_players_from_team(context: ContextTypes.DEFAULT_TYPE):
                 comment="Игрок удалён из команды за неоплату месячного абонемента",
             )
 
+            removed_players.append(player_name)
             success_count += 1
         except Exception as e:
             print(f"Не удалось удалить игрока {user_id} из команды за неоплату: {e}")
             fail_count += 1
 
+    coach_success_count, coach_fail_count = await notify_coaches_about_removed_players(
+        context=context,
+        removed_players=removed_players,
+    )
+
     print(
         f"Удалено из команды за неоплату: {success_count}. "
-        f"Ошибок: {fail_count}"
+        f"Ошибок удаления: {fail_count}. "
+        f"Отчёт тренерам отправлен: {coach_success_count}. "
+        f"Ошибок отправки тренерам: {coach_fail_count}."
     )
 
 
