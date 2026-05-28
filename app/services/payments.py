@@ -164,6 +164,14 @@ async def send_subscription_overdue_reminders(context: ContextTypes.DEFAULT_TYPE
 
 
 async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Ручная кнопка тренера "Напомнить об оплате".
+
+    Использует ту же выборку, что и автоматическое напоминание в день оплаты:
+    - только approved игроки;
+    - только payment_day = сегодняшний день;
+    - только is_paid_current_period = FALSE.
+    """
     today = datetime.now(TIMEZONE).date()
     subscriptions = get_payment_due_today_with_users(today)
 
@@ -204,7 +212,74 @@ async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
     return success_count, fail_count
 
 
+async def send_payment_due_today_reminders(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Автоматическое напоминание в день оплаты.
+
+    Отправляется только approved-игрокам, у которых:
+    - payment_day = сегодняшний день месяца;
+    - is_paid_current_period = FALSE.
+
+    Уже оплатившим игрокам сообщение не уйдёт.
+    """
+    today = datetime.now(TIMEZONE).date()
+    subscriptions = get_payment_due_today_with_users(today)
+
+    if not subscriptions:
+        print("Нет игроков, у которых сегодня день оплаты.")
+        return
+
+    success_count = 0
+    fail_count = 0
+    message_text = build_payment_reminder_message()
+    reply_markup = get_payment_keyboard()
+
+    for (
+        user_id,
+        username,
+        first_name,
+        payment_day,
+        subscription_type,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) in subscriptions:
+        if not is_broadcast_recipient(user_id):
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=message_text,
+                reply_markup=reply_markup,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить напоминание в день оплаты игроку {user_id}: {e}")
+            fail_count += 1
+
+    print(
+        f"Отправлено напоминаний в день оплаты: {success_count}. "
+        f"Ошибок: {fail_count}"
+    )
+
+
 def schedule_daily_payment_jobs(application):
+    """
+    Планировщик напоминаний по оплате.
+
+    Старая логика сохранена:
+    - за 5 и 4 дня до конца абонемента — 2 раза в день;
+    - за 3 и 2 дня — 3 раза в день;
+    - за 1 день — 6 раз в день;
+    - просрочка — 1 раз в день.
+
+    Новая логика:
+    - в сам день оплаты в 10:00 отправляется отдельное напоминание
+      только тем, кто ещё не оплатил текущий период.
+    """
     reminder_schedule = [
         # За 5 и 4 дня — 2 раза в день
         ("subscription_end_reminders_5d_09", time(9, 0, tzinfo=TIMEZONE), {5}),
@@ -241,27 +316,22 @@ def schedule_daily_payment_jobs(application):
             name=job_name,
         )
 
-    existing_overdue_jobs = application.job_queue.get_jobs_by_name("subscription_overdue_reminders")
-    if not existing_overdue_jobs:
-        application.job_queue.run_daily(
-            send_subscription_overdue_reminders,
-            time=time(12, 30, tzinfo=TIMEZONE),
-            name="subscription_overdue_reminders",
-        )
+    payment_due_today_schedule = [
+        ("payment_due_today_reminders_10", time(10, 0, tzinfo=TIMEZONE)),
+        ("payment_due_today_reminders_20", time(20, 0, tzinfo=TIMEZONE)),
+    ]
 
-    for job_name, job_time, job_days in reminder_schedule:
-        existing_jobs = application.job_queue.get_jobs_by_name(job_name)
-        if existing_jobs:
+    for job_name, job_time in payment_due_today_schedule:
+        existing_due_today_jobs = application.job_queue.get_jobs_by_name(job_name)
+        if existing_due_today_jobs:
             continue
 
         application.job_queue.run_daily(
-            send_subscription_ending_reminders,
+            send_payment_due_today_reminders,
             time=job_time,
-            data={"days": job_days},
             name=job_name,
         )
 
-    # Просрочка — 1 раз в день
     existing_overdue_jobs = application.job_queue.get_jobs_by_name("subscription_overdue_reminders")
     if not existing_overdue_jobs:
         application.job_queue.run_daily(
