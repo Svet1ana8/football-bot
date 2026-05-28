@@ -273,6 +273,42 @@ def build_game_created_notification(game_date, game_time, opponent_name, locatio
 
     return text
 
+def build_training_created_notification(training_date, training_time) -> str:
+    return (
+        "🏈 Тренер добавил новую тренировку\n\n"
+        f"Дата: {training_date.strftime('%d.%m.%Y')}\n"
+        f"Время: {training_time.strftime('%H:%M')}\n\n"
+        "Смотри календарь тренировок."
+    )
+
+
+async def notify_players_training_created(
+    context: ContextTypes.DEFAULT_TYPE,
+    training_date,
+    training_time,
+):
+    approved_users = get_users_by_status("approved")
+    message_text = build_training_created_notification(training_date, training_time)
+
+    success_count = 0
+    fail_count = 0
+
+    for player_id, username, first_name in approved_users:
+        if not is_broadcast_recipient(player_id):
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=player_id,
+                text=message_text,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить уведомление о новой тренировке игроку {player_id}: {e}")
+            fail_count += 1
+
+    return success_count, fail_count
+
 
 async def test_subscription_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_coach(update.effective_user.id):
@@ -1010,9 +1046,17 @@ async def handle_training_schedule_add_input(update: Update, context: ContextTyp
 
     context.user_data["awaiting_training_schedule_manual_date"] = False
 
+    notify_success, notify_fail = await notify_players_training_created(
+        context=context,
+        training_date=parsed_dt.date(),
+        training_time=parsed_dt.time(),
+    )
+
     await update.message.reply_text(
         "✅ Тренировка добавлена.\n\n"
-        f"{format_training_schedule_row(parsed_dt.date(), parsed_dt.time())}"
+        f"{format_training_schedule_row(parsed_dt.date(), parsed_dt.time())}\n\n"
+        f"Игрокам отправлено уведомление: {notify_success}\n"
+        f"Ошибок отправки: {notify_fail}"
     )
 
 

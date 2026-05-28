@@ -29,6 +29,7 @@ from app.repositories.users import (
 from app.services.access import is_broadcast_recipient, is_coach
 from app.services.notifications import notify_coaches_about_request
 from app.repositories.trainings import get_active_training
+from app.handlers.coach import notify_players_training_created
 from app.services.trainings import (
     build_training_message,
     cancel_current_training_vote,
@@ -874,7 +875,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("У тебя нет доступа к этому действию.")
             return
 
-        selected_date = datetime.strptime(data.replace("training_add_date_", "", 1), "%Y-%m-%d").date()
+        selected_date = datetime.strptime(
+            data.replace("training_add_date_", "", 1),
+            "%Y-%m-%d"
+        ).date()
         training_time = datetime.strptime("21:00", "%H:%M").time()
 
         add_training_schedule(
@@ -883,9 +887,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             comment=None,
         )
 
+        notify_success, notify_fail = await notify_players_training_created(
+            context=context,
+            training_date=selected_date,
+            training_time=training_time,
+        )
+
         await query.edit_message_text(
             "✅ Тренировка добавлена.\n\n"
-            f"{format_training_schedule_row(selected_date, training_time)}"
+            f"{format_training_schedule_row(selected_date, training_time)}\n\n"
+            f"Игрокам отправлено уведомление: {notify_success}\n"
+            f"Ошибок отправки: {notify_fail}"
         )
         return
 
