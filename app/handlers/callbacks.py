@@ -711,8 +711,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         deactivate_training_schedule(schedule_id)
 
-        cancelled_active, notify_success, notify_fail = await cancel_active_training_if_needed(
+        cancelled_active, _, _ = await cancel_active_training_if_needed(
             query=query,
+            context=context,
+            training_date=training_date,
+            training_time=training_time,
+        )
+
+        notify_success, notify_fail = await notify_players_training_cancelled(
             context=context,
             training_date=training_date,
             training_time=training_time,
@@ -720,15 +726,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result_text = (
             "🗑 Тренировка удалена.\n\n"
-            f"{format_training_schedule_row(training_date, training_time, comment)}"
+            f"{format_training_schedule_row(training_date, training_time, comment)}\n\n"
+            f"Игрокам отправлено уведомление: {notify_success}\n"
+            f"Ошибок отправки: {notify_fail}"
         )
 
         if cancelled_active:
-            result_text += (
-                "\n\n❌ Активная тренировка отменена."
-                f"\nИгрокам отправлено уведомление: {notify_success}"
-                f"\nОшибок отправки: {notify_fail}"
-            )
+            result_text += "\n\n❌ Активная тренировка тоже отменена."
 
         await query.edit_message_text(result_text)
 
@@ -775,8 +779,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         deactivate_training_schedule(schedule_id)
 
-        cancelled_active, notify_success, notify_fail = await cancel_active_training_if_needed(
+        cancelled_active, _, _ = await cancel_active_training_if_needed(
             query=query,
+            context=context,
+            training_date=training_date,
+            training_time=training_time,
+        )
+
+        notify_success, notify_fail = await notify_players_training_cancelled(
             context=context,
             training_date=training_date,
             training_time=training_time,
@@ -784,15 +794,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         result_text = (
             "🗑 Тренировка удалена.\n\n"
-            f"{format_training_schedule_row(training_date, training_time, comment)}"
+            f"{format_training_schedule_row(training_date, training_time, comment)}\n\n"
+            f"Игрокам отправлено уведомление: {notify_success}\n"
+            f"Ошибок отправки: {notify_fail}"
         )
 
         if cancelled_active:
-            result_text += (
-                "\n\n❌ Активная тренировка отменена."
-                f"\nИгрокам отправлено уведомление: {notify_success}"
-                f"\nОшибок отправки: {notify_fail}"
-            )
+            result_text += "\n\n❌ Активная тренировка тоже отменена."
 
         await query.edit_message_text(result_text)
         return
