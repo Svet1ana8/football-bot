@@ -20,6 +20,7 @@ from app.repositories.trainings import (
     get_month_no_response_stats,
     get_training_responses,
     get_user_response_for_training,
+    is_training_cancelled_for_date,
     save_training_response,
     update_training_coach_report_time,
     update_training_day_no_response_reminder,
@@ -924,12 +925,34 @@ def get_or_create_training_for_vote_day(now: datetime):
     Возвращает активную тренировку для текущего дня предварительного голосования.
 
     Если подходящей активной стандартной тренировки нет — создаёт новую.
-    Если активна нестандартная тренировка, авто-стандарт её не трогает.
+
+    Важно:
+    - если тренировка на эту дату была отменена тренером,
+      новую голосовалку НЕ создаём;
+    - если активная тренировка уже есть, но по этой дате есть отмена,
+      активную тренировку закрываем;
+    - ответы игроков не удаляем.
     """
     active_training = get_active_training()
     active_data = unpack_training(active_training)
 
     if active_data and active_data["is_custom"]:
+        return None, False
+
+    training_datetime = get_next_training_datetime_from_vote_day(now)
+    training_date = training_datetime.date()
+
+    if is_training_cancelled_for_date(training_date):
+        if active_data and active_data.get("start_time"):
+            active_start_local = active_data["start_time"].astimezone(TIMEZONE)
+
+            if active_start_local.date() == training_date:
+                deactivate_training(active_data["id"])
+
+        print(
+            f"Training for {training_date} is cancelled. "
+            "Auto vote reminder will not be created."
+        )
         return None, False
 
     if active_training and is_active_training_for_vote_day(active_training, now):
@@ -938,7 +961,6 @@ def get_or_create_training_for_vote_day(now: datetime):
     if active_data and active_data["id"]:
         deactivate_training(active_data["id"])
 
-    training_datetime = get_next_training_datetime_from_vote_day(now)
     message_text = build_training_message()
     stop_at = get_today_stop_at()
 
@@ -960,14 +982,34 @@ def get_or_create_training_for_manual_reminder(now: datetime):
     Важно:
     - если активная тренировка уже есть — используем её training_id;
     - если активной нет — создаём ближайшую стандартную тренировку;
+    - если тренировка на эту дату отменена — НЕ создаём её заново;
     - training_responses не очищаем.
     """
     active_training = get_active_training()
+    active_data = unpack_training(active_training)
 
-    if active_training:
-        return unpack_training(active_training), False
+    if active_data and active_data.get("start_time"):
+        active_start_local = active_data["start_time"].astimezone(TIMEZONE)
+
+        if is_training_cancelled_for_date(active_start_local.date()):
+            deactivate_training(active_data["id"])
+            print(
+                f"Active training #{active_data['id']} is cancelled. "
+                "Manual reminder will not be sent."
+            )
+            return None, False
+
+        return active_data, False
 
     training_datetime = get_next_or_today_training_datetime(now)
+    training_date = training_datetime.date()
+
+    if is_training_cancelled_for_date(training_date):
+        print(
+            f"Training for {training_date} is cancelled. "
+            "Manual reminder will not create a new vote."
+        )
+        return None, False
 
     if training_datetime.date() == now.date():
         message_text = build_today_training_message()

@@ -783,3 +783,34 @@ def get_month_attendance_rating_stats(year: int, month: int):
             ))
 
             return cur.fetchall()
+
+def is_training_cancelled_for_date(training_date):
+    """
+    Проверяет, была ли тренировка на эту дату отменена.
+
+    Зачем:
+    - если тренер отменил тренировку за день до неё,
+      бот не должен заново создавать голосование при следующей авто-проверке;
+    - если тренер отменил тренировку в день тренировки,
+      контрольные и дневные напоминания должны остановиться.
+
+    Важно:
+    - ничего не удаляем;
+    - ответы игроков не трогаем;
+    - смотрим только факт отмены по дате start_time.
+    """
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 1
+                FROM trainings
+                WHERE DATE(start_time) = %s
+                  AND cancelled_at IS NOT NULL
+                LIMIT 1
+            """, (
+                training_date,
+            ))
+
+            return cur.fetchone() is not None

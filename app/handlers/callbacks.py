@@ -4,7 +4,7 @@ import calendar
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
-from app.config import COACH_IDS
+from app.config import COACH_IDS, TIMEZONE
 from app.keyboards import get_approved_player_menu, get_player_menu
 from app.repositories.payments import (
     add_payment_history,
@@ -20,11 +20,18 @@ from app.repositories.training_schedule import (
     get_training_schedule_by_id,
     get_upcoming_training_schedule,
 )
-from app.repositories.users import add_or_update_user, delete_user, get_user_by_id
-from app.services.access import is_coach
+from app.repositories.users import (
+    add_or_update_user,
+    delete_user,
+    get_user_by_id,
+    get_users_by_status,
+)
+from app.services.access import is_broadcast_recipient, is_coach
 from app.services.notifications import notify_coaches_about_request
+from app.repositories.trainings import get_active_training
 from app.services.trainings import (
     build_training_message,
+    cancel_current_training_vote,
     get_change_answer_confirm_keyboard,
     get_change_answer_keyboard,
     get_training_keyboard,
@@ -220,6 +227,113 @@ def build_existing_games_keyboard(schedule, callback_prefix: str) -> list[tuple[
         result.append((title, InlineKeyboardMarkup(rows)))
 
     return result
+
+def is_deleted_schedule_active_training(training_date: date, training_time) -> bool:
+    """
+    Проверяет, совпадает ли удаляемая тренировка из календаря
+    с текущей активной тренировкой в trainings.
+
+    Работает для двух случаев:
+    - тренер отменяет тренировку за день до неё;
+    - тренер отменяет тренировку в день тренировки.
+    """
+    active_training = get_active_training()
+
+    if not active_training:
+        return False
+
+    active_start_time = active_training[2]
+
+    if not active_start_time:
+        return False
+
+    active_local = active_start_time.astimezone(TIMEZONE)
+
+    return (
+        active_local.date() == training_date
+        and active_local.time().replace(second=0, microsecond=0)
+        == training_time.replace(second=0, microsecond=0)
+    )
+
+
+def build_training_cancelled_message(training_date: date, training_time) -> str:
+    """
+    Простое уведомление игрокам без причины.
+    """
+    return (
+        "❌ Тренировка отменена\n\n"
+        f"Тренировка {training_date.strftime('%d.%m.%Y')} "
+        f"в {training_time.strftime('%H:%M')} отменена."
+    )
+
+
+async def notify_players_training_cancelled(
+    context: ContextTypes.DEFAULT_TYPE,
+    training_date: date,
+    training_time,
+):
+    """
+    Отправляет approved-игрокам уведомление об отмене тренировки.
+
+    Важно:
+    - данные в БД не удаляем;
+    - ответы игроков не трогаем;
+    - если кому-то не отправилось — бот не падает.
+    """
+    approved_users = get_users_by_status("approved")
+    message_text = build_training_cancelled_message(training_date, training_time)
+
+    success_count = 0
+    fail_count = 0
+
+    for player_id, username, first_name in approved_users:
+        if not is_broadcast_recipient(player_id):
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=player_id,
+                text=message_text,
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить уведомление об отмене игроку {player_id}: {e}")
+            fail_count += 1
+
+    return success_count, fail_count
+
+
+async def cancel_active_training_if_needed(
+    query,
+    context: ContextTypes.DEFAULT_TYPE,
+    training_date: date,
+    training_time,
+) -> tuple[bool, int, int]:
+    """
+    Если удаляемая тренировка совпадает с активной тренировкой,
+    отменяем активную тренировку и уведомляем игроков.
+
+    Возвращает:
+    cancelled, success_count, fail_count
+    """
+    if not is_deleted_schedule_active_training(training_date, training_time):
+        return False, 0, 0
+
+    cancelled_training_id = await cancel_current_training_vote(
+        coach_user_id=query.from_user.id,
+        reason=None,
+    )
+
+    if not cancelled_training_id:
+        return False, 0, 0
+
+    success_count, fail_count = await notify_players_training_cancelled(
+        context=context,
+        training_date=training_date,
+        training_time=training_time,
+    )
+
+    return True, success_count, fail_count
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -601,10 +715,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         deactivate_training_schedule(schedule_id)
 
-        await query.edit_message_text(
+        cancelled_active, notify_success, notify_fail = await cancel_active_training_if_needed(
+            query=query,
+            context=context,
+            training_date=training_date,
+            training_time=training_time,
+        )
+
+        result_text = (
             "🗑 Тренировка удалена.\n\n"
             f"{format_training_schedule_row(training_date, training_time, comment)}"
         )
+
+        if cancelled_active:
+            result_text += (
+                "\n\n❌ Активная тренировка отменена."
+                f"\nИгрокам отправлено уведомление: {notify_success}"
+                f"\nОшибок отправки: {notify_fail}"
+            )
+
+        await query.edit_message_text(result_text)
 
         remaining_schedule = get_upcoming_training_schedule()
 
@@ -646,12 +776,29 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         _, training_date, training_time, comment, is_active, created_at = row
+
         deactivate_training_schedule(schedule_id)
 
-        await query.edit_message_text(
+        cancelled_active, notify_success, notify_fail = await cancel_active_training_if_needed(
+            query=query,
+            context=context,
+            training_date=training_date,
+            training_time=training_time,
+        )
+
+        result_text = (
             "🗑 Тренировка удалена.\n\n"
             f"{format_training_schedule_row(training_date, training_time, comment)}"
         )
+
+        if cancelled_active:
+            result_text += (
+                "\n\n❌ Активная тренировка отменена."
+                f"\nИгрокам отправлено уведомление: {notify_success}"
+                f"\nОшибок отправки: {notify_fail}"
+            )
+
+        await query.edit_message_text(result_text)
         return
 
     if data.startswith("training_transfer_"):
