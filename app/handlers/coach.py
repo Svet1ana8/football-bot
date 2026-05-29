@@ -49,6 +49,7 @@ from app.repositories.users import (
     get_users_by_status,
 )
 from app.services.access import is_broadcast_recipient, is_coach
+from app.services.messages import send_long_message_by_update
 from app.services.payments import (
     send_manual_payment_reminders,
     send_subscription_ending_reminders,
@@ -1125,7 +1126,7 @@ async def show_ending_soon(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📌 Последняя оплата: {last_payment_date.strftime('%d.%m.%Y') if last_payment_date else 'Не указана'}\n\n"
         )
 
-    await update.message.reply_text(text)
+    await send_long_message_by_update(update, text)
 
 
 async def show_unpaid_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1169,7 +1170,7 @@ async def show_unpaid_players(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"💸 Нажал «Оплатил»: {'Да' if payment_claimed else 'Нет'}\n\n"
         )
 
-    await update.message.reply_text(text)
+    await send_long_message_by_update(update, text)
 
 
 async def open_mark_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1272,7 +1273,7 @@ async def show_all_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
             f"💸 Нажал «Оплатил»: {claimed_text}\n\n"
         )
 
-    await update.message.reply_text(text)
+    await send_long_message_by_update(update, text)
 
 
 async def show_training_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1329,7 +1330,7 @@ async def show_payment_history(update: Update, context: ContextTypes.DEFAULT_TYP
 
         text += "\n"
 
-    await update.message.reply_text(text)
+    await send_long_message_by_update(update, text)
 
 
 async def show_month_attendance(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1362,7 +1363,7 @@ async def show_month_attendance(update: Update, context: ContextTypes.DEFAULT_TY
             f"📌 Всего ответов: {total_count}\n\n"
         )
 
-    await update.message.reply_text(text)
+    await send_long_message_by_update(update, text)
 
 
 async def refresh_player_menus(update: Update, context: ContextTypes.DEFAULT_TYPE):
