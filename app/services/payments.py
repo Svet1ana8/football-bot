@@ -697,22 +697,6 @@ def schedule_daily_payment_jobs(application):
             name=job_name,
         )
 
-    payment_due_today_schedule = [
-        ("payment_due_today_reminders_10", time(10, 0, tzinfo=TIMEZONE)),
-        ("payment_due_today_reminders_20", time(20, 0, tzinfo=TIMEZONE)),
-    ]
-
-    for job_name, job_time in payment_due_today_schedule:
-        existing_due_today_jobs = application.job_queue.get_jobs_by_name(job_name)
-        if existing_due_today_jobs:
-            continue
-
-        application.job_queue.run_daily(
-            send_payment_due_today_reminders,
-            time=job_time,
-            name=job_name,
-        )
-
     existing_overdue_jobs = application.job_queue.get_jobs_by_name("subscription_overdue_reminders")
     if not existing_overdue_jobs:
         application.job_queue.run_daily(
