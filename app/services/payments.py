@@ -381,11 +381,14 @@ async def send_payment_due_today_reminders(context: ContextTypes.DEFAULT_TYPE):
 
 async def send_payment_collection_hourly_reminders(context: ContextTypes.DEFAULT_TYPE):
     """
-    С 28 числа до последнего дня месяца каждый час отправляет
-    обычное напоминание об оплате тем, кто не оплатил месячный абонемент.
+    С 28 числа до последнего дня месяца каждый час отправляет напоминание
+    тем, кто не оплатил месячный абонемент.
 
-    На последнем дне месяца с 18:00 до 21:00 обычную напоминалку не шлём,
-    потому что в это время уходит финальное предупреждение.
+    Логика текста:
+    - если абонемент ещё не истёк — обычное напоминание об оплате;
+    - если абонемент уже истёк — сообщение о просрочке;
+    - в последний день месяца с 18:00 до 21:00 обычную/просроченную
+      напоминалку не шлём, потому что в это время уходит финальное предупреждение.
     """
     now = datetime.now(TIMEZONE)
     today = now.date()
@@ -404,7 +407,6 @@ async def send_payment_collection_hourly_reminders(context: ContextTypes.DEFAULT
 
     success_count = 0
     fail_count = 0
-    message_text = build_payment_reminder_message()
     reply_markup = get_payment_keyboard()
 
     for (
@@ -421,6 +423,15 @@ async def send_payment_collection_hourly_reminders(context: ContextTypes.DEFAULT
     ) in subscriptions:
         if not is_broadcast_recipient(user_id):
             continue
+
+        if subscription_end_date and subscription_end_date < today:
+            overdue_days = (today - subscription_end_date).days
+            message_text = build_subscription_overdue_message(
+                first_name=first_name,
+                overdue_days=overdue_days,
+            )
+        else:
+            message_text = build_payment_reminder_message()
 
         try:
             await context.bot.send_message(
