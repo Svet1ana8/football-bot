@@ -814,3 +814,84 @@ def is_training_cancelled_for_date(training_date):
             ))
 
             return cur.fetchone() is not None
+
+def mark_training_date_cancelled(
+    start_time: datetime,
+    cancelled_by_user_id: int | None = None,
+    reason: str | None = None,
+):
+    """
+    Создаёт запись-метку об отмене тренировки на конкретную дату.
+
+    Зачем:
+    - если тренер удалил будущую тренировку из календаря,
+      но активного голосования по ней ещё нет;
+    - бот должен запомнить, что эта дата отменена;
+    - потом авто-логика не должна создавать новое голосование на эту дату.
+
+    Важно:
+    - активные тренировки НЕ трогаем;
+    - старые ответы НЕ удаляем;
+    - создаём неактивную запись в trainings с cancelled_at.
+    """
+    ensure_training_repository_schema()
+
+    training_date = start_time.date()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            # Если отмена на эту дату уже есть — дубль не создаём.
+            cur.execute("""
+                SELECT id
+                FROM trainings
+                WHERE DATE(start_time) = %s
+                  AND cancelled_at IS NOT NULL
+                ORDER BY id DESC
+                LIMIT 1
+            """, (
+                training_date,
+            ))
+
+            existing = cur.fetchone()
+
+            if existing:
+                return existing[0]
+
+            cur.execute("""
+                INSERT INTO trainings (
+                    message_text,
+                    start_time,
+                    last_reminder_time,
+                    stop_at,
+                    is_active,
+                    last_confirmation_time,
+                    last_training_day_no_response_reminder_time,
+                    last_coach_report_time,
+                    is_custom,
+                    created_by_user_id,
+                    cancelled_at,
+                    cancelled_by_user_id,
+                    cancel_reason
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s)
+                RETURNING id
+            """, (
+                "Тренировка отменена.",
+                start_time,
+                None,
+                start_time,
+                False,
+                None,
+                None,
+                None,
+                False,
+                cancelled_by_user_id,
+                cancelled_by_user_id,
+                reason,
+            ))
+
+            row = cur.fetchone()
+
+        conn.commit()
+
+    return row[0] if row else None
