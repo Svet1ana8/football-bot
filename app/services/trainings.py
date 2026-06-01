@@ -1006,6 +1006,7 @@ def get_or_create_training_for_manual_reminder(now: datetime):
 
     if is_training_cancelled_for_date(training_date):
         print(
+        print(
             f"Training for {training_date} is cancelled. "
             "Manual reminder will not create a new vote."
         )
@@ -1912,7 +1913,19 @@ def build_training_status_text(application) -> str:
     total_players = len(approved_users)
 
     responses = get_training_responses(training_id)
-    answered_count = len(responses)
+
+    approved_user_ids = {
+        user_id
+        for user_id, username, first_name in approved_users
+    }
+
+    answered_user_ids = {
+        user_id
+        for user_id, username, first_name, response in responses
+        if user_id in approved_user_ids
+    }
+
+    answered_count = len(answered_user_ids)
     not_answered_count = max(total_players - answered_count, 0)
 
     now_local = datetime.now(TIMEZONE)
