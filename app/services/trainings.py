@@ -1006,7 +1006,6 @@ def get_or_create_training_for_manual_reminder(now: datetime):
 
     if is_training_cancelled_for_date(training_date):
         print(
-        print(
             f"Training for {training_date} is cancelled. "
             "Manual reminder will not create a new vote."
         )
