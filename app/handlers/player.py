@@ -430,12 +430,33 @@ async def show_refereeing_guide(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def show_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bonuses = get_player_bonuses(update.effective_user.id)
+    subscription = get_subscription_by_user_id(update.effective_user.id)
+
+    prepaid_text = "нет"
+
+    if subscription:
+        (
+            user_id,
+            payment_day,
+            subscription_type,
+            subscription_end_date,
+            last_payment_date,
+            is_paid_current_period,
+            _has_custom_schedule,
+            payment_claimed,
+        ) = subscription
+
+        today = date.today()
+
+        if subscription_end_date and subscription_end_date > today:
+            prepaid_text = f"оплачено до {subscription_end_date.strftime('%d.%m.%Y')}"
 
     if not bonuses:
         await update.message.reply_text(
             "🎁 Бонусы\n\n"
             "Скидка за посещение всех тренировок: нет\n"
-            "Бесплатный абонемент за приведенного игрока: нет"
+            "Бесплатный абонемент за приведенного игрока: нет\n"
+            f"Предоплата тренировок: {prepaid_text}"
         )
         return
 
@@ -447,7 +468,8 @@ async def show_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎁 Бонусы\n\n"
         f"Скидка за посещение всех тренировок: {attendance_text}\n"
-        f"Бесплатный абонемент за приведенного игрока: {referral_text}"
+        f"Бесплатный абонемент за приведенного игрока: {referral_text}\n"
+        f"Предоплата тренировок: {prepaid_text}"
     )
 
 
