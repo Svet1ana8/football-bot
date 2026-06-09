@@ -1106,20 +1106,57 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if data.startswith("game_player_view_"):
-        game_id = int(data.split("_")[-1])
+    if (
+            data.startswith("game_player_view_")
+            or data.startswith("game_view_")
+            or data.startswith("game_coach_view_")
+    ):
+        if data.startswith("game_player_view_"):
+            game_id = int(data.replace("game_player_view_", "", 1))
+        elif data.startswith("game_coach_view_"):
+            game_id = int(data.replace("game_coach_view_", "", 1))
+        else:
+            game_id = int(data.replace("game_view_", "", 1))
+
         row = get_game_schedule_by_id(game_id)
 
         if not row:
-            await query.answer("Матч не найден", show_alert=True)
+            await query.answer()
+            await query.message.reply_text("Матч не найден.")
             return
 
-        _, game_date, game_time, opponent_name, comment, is_active, created_at = row
+        (
+            game_id,
+            game_date,
+            game_time,
+            opponent_name,
+            comment,
+            is_active,
+            created_at,
+        ) = row
 
-        await query.answer(
-            format_game_schedule_row(game_date, game_time, opponent_name, comment),
-            show_alert=True
+        if not is_active:
+            await query.answer()
+            await query.message.reply_text("Этот матч уже неактивен или был удалён.")
+            return
+
+        game_date_text = game_date.strftime("%d.%m.%Y")
+        game_time_text = game_time.strftime("%H:%M") if game_time else "не указано"
+
+        text = (
+            "🏆 Информация о матче\n\n"
+            f"Дата: {game_date_text}\n"
+            f"Время: {game_time_text}\n"
         )
+
+        if opponent_name:
+            text += f"Соперник: {opponent_name}\n"
+
+        if comment:
+            text += f"\nМесто проведения:\n{comment}"
+
+        await query.answer()
+        await query.message.reply_text(text)
         return
 
     if data.startswith("game_delete_direct_"):
