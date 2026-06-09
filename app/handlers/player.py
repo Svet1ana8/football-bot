@@ -422,10 +422,21 @@ async def show_chrk_regulations(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def show_refereeing_guide(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🧑‍⚖️ Руководство по судейству\n\n"
-        "Документ пока не загружен."
-    )
+    file_path = Path("app/static/documents/refereeing_guide.pdf")
+
+    if not file_path.exists():
+        await update.message.reply_text(
+            "🧑‍⚖️ Руководство по судейству\n\n"
+            "Документ пока не найден в проекте."
+        )
+        return
+
+    with file_path.open("rb") as f:
+        await update.message.reply_document(
+            document=f,
+            filename="Руководство_по_судейству.pdf",
+            caption="🧑‍⚖️ Руководство по судейству"
+        )
 
 
 async def show_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
