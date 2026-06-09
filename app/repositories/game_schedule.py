@@ -57,3 +57,20 @@ def deactivate_game_schedule(game_id: int):
                 (game_id,),
             )
         conn.commit()
+
+def get_game_schedule_by_id(game_id: int):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    id,
+                    game_date,
+                    game_time,
+                    opponent_name,
+                    comment,
+                    is_active,
+                    created_at
+                FROM game_schedule
+                WHERE id = %s
+            """, (game_id,))
+            return cur.fetchone()
