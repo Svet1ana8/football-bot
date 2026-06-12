@@ -22,6 +22,7 @@ from app.handlers.coach import (
 )
 from app.handlers.common import my_id, start
 from app.handlers.player import menu_handler
+from app.services.games import schedule_game_vote_jobs
 from app.services.notifications import remind_coaches_about_pending_requests
 from app.services.payments import schedule_daily_payment_jobs
 from app.services.trainings import (
@@ -55,6 +56,7 @@ def main():
     schedule_training_auto_start_job(app)
     schedule_training_repeat_job(app)
     schedule_training_evening_confirmation_job(app)
+    schedule_game_vote_jobs(app)
     schedule_daily_payment_jobs(app)
 
     app.job_queue.run_daily(

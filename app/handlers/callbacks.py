@@ -47,6 +47,7 @@ from app.repositories.game_schedule import (
     get_game_schedule_by_id,
     get_upcoming_game_schedule,
 )
+from app.repositories.game_votes import save_game_vote_response
 
 
 def get_display_name(
@@ -372,6 +373,101 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text("Твоя заявка отправлена тренеру. Ожидай подтверждения.")
         await notify_coaches_about_request(context, user.id)
+        return
+
+
+    if data.startswith("game_vote_yes_"):
+        game_id = int(data.replace("game_vote_yes_", "", 1))
+
+        existing_user = get_user_by_id(user_id)
+        is_approved_player = bool(
+            existing_user and existing_user[3] == "approved"
+        )
+
+        if not is_coach(user_id) and not is_approved_player:
+            await query.edit_message_text(
+                "У тебя нет доступа к голосованию по матчу."
+            )
+            return
+
+        game = get_game_schedule_by_id(game_id)
+
+        if not game or not game[5]:
+            await query.edit_message_text(
+                "Матч не найден или уже неактивен."
+            )
+            return
+
+        player_name = (
+            existing_user[2]
+            if existing_user and existing_user[2]
+            else query.from_user.first_name
+        )
+
+        save_game_vote_response(
+            game_id=game_id,
+            user_id=user_id,
+            username=query.from_user.username,
+            first_name=player_name,
+            response="yes",
+        )
+
+        current_text = query.message.text or "Голосование по матчу"
+
+        await query.edit_message_text(
+            text=(
+                f"{current_text}\n\n"
+                "✅ Ответ сохранён: буду на матче."
+            ),
+            reply_markup=None,
+        )
+        return
+
+    if data.startswith("game_vote_no_"):
+        game_id = int(data.replace("game_vote_no_", "", 1))
+
+        existing_user = get_user_by_id(user_id)
+        is_approved_player = bool(
+            existing_user and existing_user[3] == "approved"
+        )
+
+        if not is_coach(user_id) and not is_approved_player:
+            await query.edit_message_text(
+                "У тебя нет доступа к голосованию по матчу."
+            )
+            return
+
+        game = get_game_schedule_by_id(game_id)
+
+        if not game or not game[5]:
+            await query.edit_message_text(
+                "Матч не найден или уже неактивен."
+            )
+            return
+
+        player_name = (
+            existing_user[2]
+            if existing_user and existing_user[2]
+            else query.from_user.first_name
+        )
+
+        save_game_vote_response(
+            game_id=game_id,
+            user_id=user_id,
+            username=query.from_user.username,
+            first_name=player_name,
+            response="no",
+        )
+
+        current_text = query.message.text or "Голосование по матчу"
+
+        await query.edit_message_text(
+            text=(
+                f"{current_text}\n\n"
+                "❌ Ответ сохранён: не буду на матче."
+            ),
+            reply_markup=None,
+        )
         return
 
     if data.startswith("training_yes_"):
