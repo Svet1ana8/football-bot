@@ -15,6 +15,7 @@ from app.repositories.payments import (
     get_payment_due_today_with_users,
     get_subscriptions_ending_soon_with_users,
     get_unpaid_subscriptions_with_users,
+    open_monthly_payment_periods,
 )
 from app.repositories.users import add_or_update_user, get_user_by_id
 from app.services.access import is_broadcast_recipient
@@ -52,6 +53,36 @@ def build_payment_reminder_message() -> str:
         f"Добрый вечер. Напоминаем об оплате абонемента в {month_name}. "
         "Пожалуйста, произведите оплату."
     )
+
+
+def build_new_player_payment_message(first_name: str | None) -> str:
+    name = first_name or "игрок"
+    return (
+        "💳 Оплата абонемента\n\n"
+        f"{name}, после одобрения заявки необходимо оплатить абонемент "
+        "за текущий месяц.\n\n"
+        "После оплаты нажми кнопку «💸 Оплатил»."
+    )
+
+
+def ensure_monthly_payment_periods_open(today) -> int:
+    """
+    Открывает новый месячный платёжный период за 5 дней до окончания.
+
+    Функция безопасна для повторных запусков: уже открытый период повторно
+    не меняется, а после подтверждения оплаты дата окончания переносится
+    на следующий месяц.
+    """
+    opened_count = open_monthly_payment_periods(
+        today=today,
+        days_before=SUBSCRIPTION_END_REMINDER_DAYS,
+    )
+
+    if opened_count:
+        print(f"Открыто новых платёжных периодов: {opened_count}")
+
+    return opened_count
+
 
 def is_last_day_of_month(today) -> bool:
     last_day = calendar.monthrange(today.year, today.month)[1]
@@ -177,6 +208,8 @@ async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE)
     now = datetime.now(TIMEZONE)
     today = now.date()
 
+    ensure_monthly_payment_periods_open(today)
+
     days_set = context.job.data["days"]
     subscriptions = get_subscriptions_ending_soon_with_users(
         today,
@@ -231,6 +264,7 @@ async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE)
 
 async def send_subscription_overdue_reminders(context: ContextTypes.DEFAULT_TYPE):
     today = datetime.now(TIMEZONE).date()
+    ensure_monthly_payment_periods_open(today)
     subscriptions = get_overdue_subscription_end_with_users(today)
 
     if not subscriptions:
@@ -287,6 +321,7 @@ async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
     - только is_paid_current_period = FALSE.
     """
     today = datetime.now(TIMEZONE).date()
+    ensure_monthly_payment_periods_open(today)
     subscriptions = get_payment_due_today_with_users(today)
 
     if not subscriptions:
@@ -337,6 +372,7 @@ async def send_payment_due_today_reminders(context: ContextTypes.DEFAULT_TYPE):
     Уже оплатившим игрокам сообщение не уйдёт.
     """
     today = datetime.now(TIMEZONE).date()
+    ensure_monthly_payment_periods_open(today)
     subscriptions = get_payment_due_today_with_users(today)
 
     if not subscriptions:
@@ -395,6 +431,8 @@ async def send_payment_collection_hourly_reminders(context: ContextTypes.DEFAULT
 
     if not is_payment_collection_period(today):
         return
+
+    ensure_monthly_payment_periods_open(today)
 
     if is_last_day_of_month(today) and 18 <= now.hour <= 21:
         return
@@ -459,6 +497,7 @@ async def send_final_payment_warning_reminders(context: ContextTypes.DEFAULT_TYP
     if not is_last_day_of_month(today):
         return
 
+    ensure_monthly_payment_periods_open(today)
     subscriptions = get_unpaid_monthly_players(today)
 
     if not subscriptions:
@@ -517,6 +556,7 @@ async def remove_unpaid_players_from_team(context: ContextTypes.DEFAULT_TYPE):
     if not is_last_day_of_month(today):
         return
 
+    ensure_monthly_payment_periods_open(today)
     subscriptions = get_unpaid_monthly_players(today)
 
     if not subscriptions:

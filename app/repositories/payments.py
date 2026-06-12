@@ -32,10 +32,18 @@ def _get_next_subscription_end_date(today: date, payment_day: int = 28) -> date:
 def create_subscription_for_user(
     user_id: int,
     payment_day: int = DEFAULT_PAYMENT_DAY,
-    subscription_type: str = "monthly"
+    subscription_type: str = "monthly",
+    today: date | None = None,
 ):
-    today = date.today()
-    initial_end_date = get_initial_subscription_end_date(today, payment_day)
+    """
+    Создаёт подписку для нового игрока.
+
+    При повторном вызове существующий платёжный период не сбрасывается:
+    это защищает уже подтверждённые оплаты от случайного повторного
+    нажатия тренером на кнопку одобрения.
+    """
+    current_date = today or date.today()
+    initial_end_date = get_initial_subscription_end_date(current_date, payment_day)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -53,13 +61,44 @@ def create_subscription_for_user(
                     referral_bonus
                 )
                 VALUES (%s, %s, %s, %s, NULL, FALSE, FALSE, FALSE, FALSE, FALSE)
-                ON CONFLICT (user_id) DO UPDATE
-                SET
-                    payment_day = EXCLUDED.payment_day,
-                    subscription_type = EXCLUDED.subscription_type,
-                    subscription_end_date = EXCLUDED.subscription_end_date
+                ON CONFLICT (user_id) DO NOTHING
             """, (user_id, payment_day, subscription_type, initial_end_date))
+            created = cur.rowcount > 0
         conn.commit()
+
+    return created
+
+
+def open_monthly_payment_periods(today: date, days_before: int = 5) -> int:
+    """
+    Открывает новый платёжный период для месячных абонементов.
+
+    Если до subscription_end_date осталось не больше days_before дней,
+    прошлый подтверждённый период переводится в неоплаченный. После новой
+    подтверждённой оплаты confirm_payment() перенесёт subscription_end_date
+    на 28-е число следующего месяца, поэтому в этом же месяце игрок повторно
+    в выборку не попадёт.
+
+    Нижнюю границу по дате намеренно не ставим: если бот был выключен в день
+    открытия периода, он корректно восстановит состояние после запуска.
+    """
+    end_limit = today + timedelta(days=days_before)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE player_subscriptions
+                SET is_paid_current_period = FALSE
+                WHERE subscription_type = 'monthly'
+                  AND subscription_end_date IS NOT NULL
+                  AND subscription_end_date <= %s
+                  AND is_paid_current_period = TRUE
+                RETURNING user_id
+            """, (end_limit,))
+            opened_user_ids = cur.fetchall()
+        conn.commit()
+
+    return len(opened_user_ids)
 
 
 def get_subscription_by_user_id(user_id: int):

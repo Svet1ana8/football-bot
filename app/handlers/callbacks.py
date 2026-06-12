@@ -28,6 +28,10 @@ from app.repositories.users import (
 )
 from app.services.access import is_broadcast_recipient, is_coach
 from app.services.notifications import notify_coaches_about_request
+from app.services.payments import (
+    build_new_player_payment_message,
+    get_payment_keyboard,
+)
 from app.repositories.trainings import (
     get_active_training,
     mark_training_date_cancelled,
@@ -615,10 +619,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             first_name=existing_user[2],
             status="approved"
         )
-        create_subscription_for_user(target_user_id)
+
+        local_today = datetime.now(TIMEZONE).date()
+        create_subscription_for_user(
+            user_id=target_user_id,
+            today=local_today,
+        )
 
         player_name = existing_user[2] or str(target_user_id)
         await query.edit_message_text(f"✅ Игрок {player_name} одобрен.")
+
+        approval_message_sent = False
+        payment_message_sent = False
 
         try:
             await context.bot.send_message(
@@ -626,10 +638,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="Тренер одобрил твою заявку. Теперь ты будешь получать уведомления.",
                 reply_markup=get_approved_player_menu()
             )
-        except Exception:
+            approval_message_sent = True
+        except Exception as e:
+            print(f"Не удалось отправить сообщение об одобрении игроку {target_user_id}: {e}")
+
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text=build_new_player_payment_message(existing_user[2]),
+                reply_markup=get_payment_keyboard(),
+            )
+            payment_message_sent = True
+            add_payment_history(
+                user_id=target_user_id,
+                action="initial_payment_reminder_sent",
+                comment="После одобрения отправлено уведомление об оплате за текущий месяц",
+            )
+        except Exception as e:
+            print(f"Не удалось отправить первое уведомление об оплате игроку {target_user_id}: {e}")
+
+        if not approval_message_sent or not payment_message_sent:
+            failed_parts = []
+            if not approval_message_sent:
+                failed_parts.append("сообщение об одобрении")
+            if not payment_message_sent:
+                failed_parts.append("уведомление об оплате")
+
             await context.bot.send_message(
                 chat_id=query.from_user.id,
-                text=f"Игрок {player_name} одобрен, но сообщение ему отправить не удалось."
+                text=(
+                    f"Игрок {player_name} одобрен, но не удалось отправить: "
+                    f"{', '.join(failed_parts)}."
+                ),
             )
         return
 
@@ -762,9 +802,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_user = get_user_by_id(target_user_id)
         player_name = target_user[2] if target_user and target_user[2] else str(target_user_id)
 
-        today = date.today()
+        today = datetime.now(TIMEZONE).date()
 
-        # Временно оставляем вызов функции, которую потом обновим в repositories/payments.py
         new_end_date = confirm_payment(
             user_id=target_user_id,
             today=today,
