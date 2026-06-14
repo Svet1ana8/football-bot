@@ -1,6 +1,14 @@
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 
+from app.config import TIMEZONE
 from app.db import get_connection
+
+
+def _get_local_day_bounds(training_date: date) -> tuple[datetime, datetime]:
+    """Возвращает границы локального дня в TIMEZONE для безопасного поиска TIMESTAMPTZ."""
+    day_start = datetime.combine(training_date, time.min, tzinfo=TIMEZONE)
+    day_end = day_start + timedelta(days=1)
+    return day_start, day_end
 
 
 def ensure_training_repository_schema():
@@ -207,6 +215,7 @@ def get_active_training():
                     last_coach_report_time
                 FROM trainings
                 WHERE is_active = TRUE
+                  AND cancelled_at IS NULL
                 ORDER BY id DESC
                 LIMIT 1
             """)
@@ -338,6 +347,63 @@ def deactivate_training(training_id: int):
 
         conn.commit()
 
+
+
+def is_training_active(training_id: int) -> bool:
+    """Проверяет, что конкретная тренировка всё ещё активна и не отменена."""
+    ensure_training_repository_schema()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT 1
+                FROM trainings
+                WHERE id = %s
+                  AND is_active = TRUE
+                  AND cancelled_at IS NULL
+                LIMIT 1
+            """, (training_id,))
+            return cur.fetchone() is not None
+
+
+def cancel_trainings_for_date(
+    training_date: date,
+    cancelled_by_user_id: int | None = None,
+    reason: str | None = None,
+) -> list[int]:
+    """
+    Отменяет ВСЕ записи trainings за указанную локальную дату.
+
+    Это основной предохранитель: даже если из-за старой ошибки или гонки
+    в базе осталось несколько активных записей, все они становятся
+    неактивными, а фоновые напоминания прекращаются.
+    """
+    ensure_training_repository_schema()
+    day_start, day_end = _get_local_day_bounds(training_date)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE trainings
+                SET
+                    is_active = FALSE,
+                    cancelled_at = COALESCE(cancelled_at, NOW()),
+                    cancelled_by_user_id = COALESCE(cancelled_by_user_id, %s),
+                    cancel_reason = COALESCE(cancel_reason, %s)
+                WHERE start_time >= %s
+                  AND start_time < %s
+                RETURNING id
+            """, (
+                cancelled_by_user_id,
+                reason,
+                day_start,
+                day_end,
+            ))
+            rows = cur.fetchall()
+
+        conn.commit()
+
+    return [row[0] for row in rows]
 
 def cancel_active_training(
     cancelled_by_user_id: int | None = None,
@@ -784,36 +850,44 @@ def get_month_attendance_rating_stats(year: int, month: int):
 
             return cur.fetchall()
 
-def is_training_cancelled_for_date(training_date):
+def is_training_cancelled_for_date(training_date: date) -> bool:
     """
-    Проверяет, была ли тренировка на эту дату отменена.
+    Проверяет наличие отмены по локальной дате TIMEZONE.
 
-    Зачем:
-    - если тренер отменил тренировку за день до неё,
-      бот не должен заново создавать голосование при следующей авто-проверке;
-    - если тренер отменил тренировку в день тренировки,
-      контрольные и дневные напоминания должны остановиться.
-
-    Важно:
-    - ничего не удаляем;
-    - ответы игроков не трогаем;
-    - смотрим только факт отмены по дате start_time.
+    Используются границы локального дня, поэтому результат не зависит
+    от timezone PostgreSQL/Render.
     """
     ensure_training_repository_schema()
+    day_start, day_end = _get_local_day_bounds(training_date)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT 1
-                FROM trainings
-                WHERE DATE(start_time) = %s
-                  AND cancelled_at IS NOT NULL
-                LIMIT 1
-            """, (
-                training_date,
-            ))
+                WITH cancellation_marker AS (
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM trainings
+                        WHERE start_time >= %s
+                          AND start_time < %s
+                          AND cancelled_at IS NOT NULL
+                    ) AS exists_marker
+                ),
+                schedule_state AS (
+                    SELECT
+                        COUNT(*) AS total_rows,
+                        COUNT(*) FILTER (WHERE is_active = TRUE) AS active_rows
+                    FROM training_schedule
+                    WHERE training_date = %s
+                )
+                SELECT
+                    cancellation_marker.exists_marker
+                    OR (schedule_state.total_rows > 0 AND schedule_state.active_rows = 0)
+                FROM cancellation_marker, schedule_state
+            """, (day_start, day_end, training_date))
 
-            return cur.fetchone() is not None
+            row = cur.fetchone()
+            return bool(row and row[0])
+
 
 def mark_training_date_cancelled(
     start_time: datetime,
@@ -821,42 +895,31 @@ def mark_training_date_cancelled(
     reason: str | None = None,
 ):
     """
-    Создаёт запись-метку об отмене тренировки на конкретную дату.
+    Надёжно отменяет тренировку на конкретную дату.
 
-    Зачем:
-    - если тренер удалил будущую тренировку из календаря,
-      но активного голосования по ней ещё нет;
-    - бот должен запомнить, что эта дата отменена;
-    - потом авто-логика не должна создавать новое голосование на эту дату.
-
-    Важно:
-    - активные тренировки НЕ трогаем;
-    - старые ответы НЕ удаляем;
-    - создаём неактивную запись в trainings с cancelled_at.
+    1. Закрывает ВСЕ существующие записи trainings за эту локальную дату.
+    2. Если записей ещё нет, создаёт неактивную метку отмены.
+    3. Ответы игроков и история не удаляются.
     """
     ensure_training_repository_schema()
 
-    training_date = start_time.date()
+    if start_time.tzinfo is None:
+        local_start_time = start_time.replace(tzinfo=TIMEZONE)
+    else:
+        local_start_time = start_time.astimezone(TIMEZONE)
+
+    training_date = local_start_time.date()
+    cancelled_ids = cancel_trainings_for_date(
+        training_date=training_date,
+        cancelled_by_user_id=cancelled_by_user_id,
+        reason=reason,
+    )
+
+    if cancelled_ids:
+        return max(cancelled_ids)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # Если отмена на эту дату уже есть — дубль не создаём.
-            cur.execute("""
-                SELECT id
-                FROM trainings
-                WHERE DATE(start_time) = %s
-                  AND cancelled_at IS NOT NULL
-                ORDER BY id DESC
-                LIMIT 1
-            """, (
-                training_date,
-            ))
-
-            existing = cur.fetchone()
-
-            if existing:
-                return existing[0]
-
             cur.execute("""
                 INSERT INTO trainings (
                     message_text,
@@ -873,23 +936,16 @@ def mark_training_date_cancelled(
                     cancelled_by_user_id,
                     cancel_reason
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s)
+                VALUES (%s, %s, NULL, %s, FALSE, NULL, NULL, NULL, FALSE, %s, NOW(), %s, %s)
                 RETURNING id
             """, (
                 "Тренировка отменена.",
-                start_time,
-                None,
-                start_time,
-                False,
-                None,
-                None,
-                None,
-                False,
+                local_start_time,
+                local_start_time,
                 cancelled_by_user_id,
                 cancelled_by_user_id,
                 reason,
             ))
-
             row = cur.fetchone()
 
         conn.commit()

@@ -20,6 +20,7 @@ from app.repositories.trainings import (
     get_month_no_response_stats,
     get_training_responses,
     get_user_response_for_training,
+    is_training_active,
     is_training_cancelled_for_date,
     save_training_response,
     update_training_coach_report_time,
@@ -369,6 +370,37 @@ def unpack_training(active_training):
         "last_training_day_no_response_reminder_time": active_training[9] if len(active_training) > 9 else None,
         "last_coach_report_time": active_training[10] if len(active_training) > 10 else None,
     }
+
+
+
+def stop_cancelled_training_if_needed(training, source: str) -> bool:
+    """
+    Последняя защитная проверка перед любой рассылкой по тренировке.
+
+    Если по локальной дате уже существует отмена, активная запись закрывается,
+    а вызывающая функция прекращает отправку. Это защищает и от старых
+    неконсистентных записей, оставшихся до исправления.
+    """
+    if not training:
+        return True
+
+    training_id = training.get("id")
+    start_time = training.get("start_time")
+
+    if not training_id or not start_time:
+        return True
+
+    training_date = start_time.astimezone(TIMEZONE).date()
+
+    if not is_training_cancelled_for_date(training_date):
+        return False
+
+    deactivate_training(training_id)
+    print(
+        f"Training #{training_id} for {training_date} is cancelled. "
+        f"{source} was skipped."
+    )
+    return True
 
 
 def parse_training_time() -> time:
@@ -1085,6 +1117,9 @@ async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
     if not training:
         return None
 
+    if stop_cancelled_training_if_needed(training, "Auto reminder"):
+        return None
+
     training_id = training["id"]
     message_text = training["message_text"]
     last_reminder_time = training["last_reminder_time"]
@@ -1104,6 +1139,10 @@ async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
         if not is_broadcast_recipient(user_id):
             continue
 
+        if not is_training_active(training_id):
+            print(f"Training #{training_id} was cancelled during auto reminder; sending stopped.")
+            break
+
         existing_response = get_user_response_for_training(training_id, user_id)
 
         if existing_response:
@@ -1120,6 +1159,9 @@ async def send_auto_training_reminder(context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Ошибка авто-напоминания игроку {user_id}: {e}")
             fail_count += 1
+
+    if not is_training_active(training_id):
+        return None
 
     update_training_last_reminder(training_id, now)
 
@@ -1173,6 +1215,9 @@ async def send_training_day_no_response_reminder(context: ContextTypes.DEFAULT_T
     if not training:
         return None
 
+    if stop_cancelled_training_if_needed(training, "Training-day reminder"):
+        return None
+
     training_id = training["id"]
     start_time = training["start_time"]
 
@@ -1203,6 +1248,10 @@ async def send_training_day_no_response_reminder(context: ContextTypes.DEFAULT_T
         if not is_broadcast_recipient(user_id):
             continue
 
+        if not is_training_active(training_id):
+            print(f"Training #{training_id} was cancelled during training-day reminder; sending stopped.")
+            break
+
         existing_response = get_user_response_for_training(training_id, user_id)
 
         if existing_response:
@@ -1218,6 +1267,9 @@ async def send_training_day_no_response_reminder(context: ContextTypes.DEFAULT_T
         except Exception as e:
             print(f"Ошибка напоминания неответившему игроку {user_id}: {e}")
             fail_count += 1
+
+    if not is_training_active(training_id):
+        return None
 
     update_training_day_no_response_reminder(training_id, now)
 
@@ -1264,6 +1316,9 @@ async def send_coach_training_report(context: ContextTypes.DEFAULT_TYPE):
     if not training:
         return None
 
+    if stop_cancelled_training_if_needed(training, "Coach report"):
+        return None
+
     training_id = training["id"]
     start_time = training["start_time"]
 
@@ -1288,6 +1343,10 @@ async def send_coach_training_report(context: ContextTypes.DEFAULT_TYPE):
     fail_count = 0
 
     for coach_id in coach_ids:
+
+        if not is_training_active(training_id):
+            print(f"Training #{training_id} was cancelled during coach report; sending stopped.")
+            break
         try:
             await context.bot.send_message(
                 chat_id=coach_id,
@@ -1297,6 +1356,9 @@ async def send_coach_training_report(context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Ошибка отправки авто-отчёта тренеру {coach_id}: {e}")
             fail_count += 1
+
+    if not is_training_active(training_id):
+        return None
 
     if success_count > 0:
         update_training_coach_report_time(training_id, now)
@@ -1482,6 +1544,9 @@ async def send_manual_training_reminder(
     if not training:
         return None
 
+    if stop_cancelled_training_if_needed(training, "Manual reminder"):
+        return None
+
     training_id = training["id"]
     message_text = training["message_text"]
     keyboard = get_training_keyboard(training_id)
@@ -1495,6 +1560,10 @@ async def send_manual_training_reminder(
         if not is_broadcast_recipient(user_id):
             continue
 
+        if not is_training_active(training_id):
+            print(f"Training #{training_id} was cancelled during manual reminder; sending stopped.")
+            break
+
         try:
             await context.bot.send_message(
                 chat_id=user_id,
@@ -1505,6 +1574,9 @@ async def send_manual_training_reminder(
         except Exception as e:
             print(f"Ошибка ручного напоминания игроку {user_id}: {e}")
             fail_count += 1
+
+    if not is_training_active(training_id):
+        return None
 
     create_training_reminder_log(
         training_id=training_id,
@@ -1703,6 +1775,9 @@ async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
     if not training:
         return
 
+    if stop_cancelled_training_if_needed(training, "Evening confirmation"):
+        return
+
     training_id = training["id"]
     start_time = training["start_time"]
 
@@ -1731,6 +1806,10 @@ async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
         if not is_broadcast_recipient(user_id):
             continue
 
+        if not is_training_active(training_id):
+            print(f"Training #{training_id} was cancelled during evening confirmation; sending stopped.")
+            break
+
         previous_response = previous_response_map.get(user_id)
         text = build_evening_training_message_for_player(
             previous_response=previous_response,
@@ -1747,6 +1826,9 @@ async def evening_training_confirmation_job(context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             print(f"Ошибка контрольного подтверждения игроку {user_id}: {e}")
             fail_count += 1
+
+    if not is_training_active(training_id):
+        return
 
     update_training_last_confirmation(training_id, now)
 
