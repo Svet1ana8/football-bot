@@ -25,6 +25,7 @@ from app.handlers.player import menu_handler
 from app.services.games import schedule_game_vote_jobs
 from app.services.notifications import remind_coaches_about_pending_requests
 from app.services.payments import schedule_daily_payment_jobs
+from app.services.team_breaks import schedule_team_break_notification_jobs
 from app.services.trainings import (
     schedule_training_auto_start_job,
     schedule_training_evening_confirmation_job,
@@ -58,6 +59,7 @@ def main():
     schedule_training_evening_confirmation_job(app)
     schedule_game_vote_jobs(app)
     schedule_daily_payment_jobs(app)
+    schedule_team_break_notification_jobs(app)
 
     app.job_queue.run_daily(
         remind_coaches_about_pending_requests,
