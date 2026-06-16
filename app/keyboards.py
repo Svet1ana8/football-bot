@@ -1,7 +1,7 @@
 from calendar import monthrange
 from datetime import datetime
 
-from telegram import ReplyKeyboardMarkup
+from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.config import TIMEZONE
 
@@ -264,3 +264,39 @@ def get_month_name_by_number(month: int) -> str:
             return name
 
     return str(month)
+
+def get_training_video_links_keyboard():
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "Лекция 1",
+                url="https://www.youtube.com/watch?v=gUgExXMlAHQ&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "Лекция 2",
+                url="https://www.youtube.com/watch?v=_xA4Yn9QVFM&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=2"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "Лекция 3",
+                url="https://www.youtube.com/watch?v=MnlPSHuGqC4&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=3"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "Лекция 4",
+                url="https://www.youtube.com/watch?v=Xyy7i3tGRrY&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=4"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "Лекция 5",
+                url="https://www.youtube.com/watch?v=dLeCd5DM_3w&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=5"
+            )
+        ],
+        [
+
+    return InlineKeyboardMarkup(keyboard)
