@@ -43,7 +43,6 @@ from app.keyboards import (
     get_playbook_menu,
     get_special_teams_video_menu,
     get_video_menu,
-    get_training_video_links_keyboard,
 )
 from app.repositories.game_schedule import get_upcoming_game_schedule
 from app.repositories.payments import get_player_bonuses, get_subscription_by_user_id
@@ -780,11 +779,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "Обучающее видео":
-        await update.message.reply_text(
-            "🎥 Обучающее видео\n\n"
-            "Выбери нужную лекцию:",
-            reply_markup=get_training_video_links_keyboard()
-        )
+        await open_video_menu(update, context)
         return
 
     if text == "Видео: Нападение":
