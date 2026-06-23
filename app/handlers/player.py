@@ -43,14 +43,11 @@ from app.keyboards import (
     get_playbook_menu,
     get_special_teams_video_menu,
     get_video_menu,
-    get_training_video_links_keyboard,
-    get_language_select_menu,
-    get_player_menu_action,
 )
 from app.repositories.game_schedule import get_upcoming_game_schedule
 from app.repositories.payments import get_player_bonuses, get_subscription_by_user_id
 from app.repositories.training_schedule import get_upcoming_training_schedule
-from app.repositories.users import add_or_update_user, get_user_by_id, get_user_language, set_user_language, set_user_language
+from app.repositories.users import add_or_update_user, get_user_by_id
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
 
@@ -560,45 +557,16 @@ async def show_video_punter(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def back_to_player_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    language_code = get_user_language(update.effective_user.id)
-
     await update.message.reply_text(
         "Возвращаю в меню игрока.",
-        reply_markup=get_approved_player_menu(language_code)
+        reply_markup=get_approved_player_menu()
     )
+
 
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user = update.effective_user
     existing_user = get_user_by_id(user.id)
-    player_action = get_player_menu_action(text)
-
-    if text in ["🇷🇺 Русский", "🇰🇿 Қазақша", "🇬🇧 English"]:
-        language_map = {
-            "🇷🇺 Русский": "ru",
-            "🇰🇿 Қазақша": "kk",
-            "🇬🇧 English": "en",
-        }
-
-        selected_language = language_map[text]
-
-        if not existing_user:
-            await update.message.reply_text("Сначала подай заявку через /start.")
-            return
-
-        set_user_language(user.id, selected_language)
-
-        language_names = {
-            "ru": "Русский",
-            "kk": "Қазақша",
-            "en": "English",
-        }
-
-        await update.message.reply_text(
-            f"✅ Язык изменён: {language_names[selected_language]}",
-            reply_markup=get_approved_player_menu(selected_language)
-        )
-        return
 
     if text == "Назад":
         reset_coach_temp_state(context)
@@ -762,47 +730,24 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if player_action == "my_status":
+    if text == "Мой статус":
         await my_status(update, context)
         return
 
-    if player_action == "payment_status":
+    if text == "Статус оплаты":
         await show_payment_status(update, context)
         return
 
-    if player_action == "training_schedule":
+    if text == "График тренировок":
         await show_training_schedule(update, context)
         return
 
-    if player_action == "games_schedule":
+    if text == "График игр":
         await show_games_schedule(update, context)
         return
 
-    if player_action == "playbook":
+    if text == "Playbook":
         await open_playbook_menu(update, context)
-        return
-
-    if player_action == "documents":
-        await open_documents_menu(update, context)
-        return
-
-    if player_action == "bonuses":
-        await show_bonuses(update, context)
-        return
-
-    if player_action == "training_video":
-        await update.message.reply_text(
-            "🎥 Обучающие видео по американскому футболу\n\n"
-            "Выбери нужную лекцию или открой весь плейлист:",
-            reply_markup=get_training_video_links_keyboard()
-        )
-        return
-
-    if player_action == "language":
-        await update.message.reply_text(
-            "🌐 Выбери язык / Тілді таңда / Choose language:",
-            reply_markup=get_language_select_menu()
-        )
         return
 
     if text == "Нападение":
@@ -834,11 +779,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "Обучающее видео":
-        await update.message.reply_text(
-            "🎥 Обучающие видео по американскому футболу\n\n"
-            "Выбери нужную лекцию или открой весь плейлист:",
-            reply_markup=get_training_video_links_keyboard()
-        )
+        await open_video_menu(update, context)
         return
 
     if text == "Видео: Нападение":

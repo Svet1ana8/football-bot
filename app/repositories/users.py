@@ -31,7 +31,7 @@ def get_user_by_id(user_id: int):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT user_id, username, first_name, status, language_code
+                SELECT user_id, username, first_name, status
                 FROM users
                 WHERE user_id = %s
             """, (user_id,))
@@ -48,57 +48,3 @@ def delete_user(user_id: int):
             deleted = cur.rowcount > 0
         conn.commit()
     return deleted
-
-def set_user_language(user_id: int, language_code: str):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE users
-                SET language_code = %s
-                WHERE user_id = %s
-            """, (language_code, user_id))
-        conn.commit()
-
-
-def ensure_language_column():
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                ALTER TABLE users
-                ADD COLUMN IF NOT EXISTS language_code TEXT NOT NULL DEFAULT 'ru'
-            """)
-        conn.commit()
-
-
-def get_user_language(user_id: int) -> str:
-    ensure_language_column()
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT COALESCE(language_code, 'ru')
-                FROM users
-                WHERE user_id = %s
-            """, (user_id,))
-            row = cur.fetchone()
-
-    if not row:
-        return "ru"
-
-    return row[0] or "ru"
-
-
-def set_user_language(user_id: int, language_code: str):
-    ensure_language_column()
-
-    if language_code not in ("ru", "kk", "en"):
-        language_code = "ru"
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE users
-                SET language_code = %s
-                WHERE user_id = %s
-            """, (language_code, user_id))
-        conn.commit()

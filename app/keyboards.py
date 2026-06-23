@@ -1,7 +1,7 @@
 from calendar import monthrange
 from datetime import datetime
 
-from telegram import ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import ReplyKeyboardMarkup
 
 from app.config import TIMEZONE
 
@@ -29,58 +29,13 @@ def get_player_menu():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-PLAYER_MENU_TEXTS = {
-    "ru": {
-        "my_status": "Мой статус",
-        "payment_status": "Статус оплаты",
-        "training_schedule": "График тренировок",
-        "playbook": "Playbook",
-        "games_schedule": "График игр",
-        "documents": "Документация",
-        "bonuses": "Бонусы",
-        "training_video": "Обучающее видео",
-        "language": "🌐 Язык",
-    },
-    "kk": {
-        "my_status": "Менің мәртебем",
-        "payment_status": "Төлем мәртебесі",
-        "training_schedule": "Жаттығу кестесі",
-        "playbook": "Playbook",
-        "games_schedule": "Ойындар кестесі",
-        "documents": "Құжаттар",
-        "bonuses": "Бонустар",
-        "training_video": "Оқу видеолары",
-        "language": "🌐 Тіл",
-    },
-    "en": {
-        "my_status": "My status",
-        "payment_status": "Payment status",
-        "training_schedule": "Training schedule",
-        "playbook": "Playbook",
-        "games_schedule": "Games schedule",
-        "documents": "Documents",
-        "bonuses": "Bonuses",
-        "training_video": "Training videos",
-        "language": "🌐 Language",
-    },
-}
-
-
-def get_player_menu_texts(language_code: str = "ru"):
-    return PLAYER_MENU_TEXTS.get(language_code, PLAYER_MENU_TEXTS["ru"])
-
-
-def get_approved_player_menu(language_code: str = "ru"):
-    t = get_player_menu_texts(language_code)
-
+def get_approved_player_menu():
     keyboard = [
-        [t["my_status"], t["payment_status"]],
-        [t["training_schedule"], t["playbook"]],
-        [t["games_schedule"], t["documents"]],
-        [t["bonuses"], t["training_video"]],
-        [t["language"]],
+        ["Мой статус", "Статус оплаты"],
+        ["График тренировок", "Playbook"],
+        ["График игр", "Документация"],
+        ["Бонусы", "Обучающее видео"],
     ]
-
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
@@ -309,125 +264,3 @@ def get_month_name_by_number(month: int) -> str:
             return name
 
     return str(month)
-
-def get_training_video_links_keyboard():
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🎥 Открыть YouTube-канал",
-                url="https://www.youtube.com/@36%D0%A1%D1%82%D1%83%D0%B4%D0%B8%D1%8F/featured"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏈 Лекция 1",
-                url="https://www.youtube.com/watch?v=gUgExXMlAHQ&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏃 Лекция 2",
-                url="https://www.youtube.com/watch?v=_xA4Yn9QVFM&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=2"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🛡 Лекция 3",
-                url="https://www.youtube.com/watch?v=MnlPSHuGqC4&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=3"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🛡 Лекция 4",
-                url="https://www.youtube.com/watch?v=Xyy7i3tGRrY&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=4"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🛡 Лекция 5",
-                url="https://www.youtube.com/watch?v=dLeCd5DM_3w&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=5"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📚 Плейлист",
-                url="https://youtube.com/playlist?list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&si=hBrOYjgnpB2Kfolf"
-            )
-        ],
-
-    ]
-
-    return InlineKeyboardMarkup(keyboard)
-
-PLAYER_MENU_TEXTS = {
-    "ru": {
-        "my_status": "Мой статус",
-        "payment_status": "Статус оплаты",
-        "training_schedule": "График тренировок",
-        "playbook": "Playbook",
-        "games_schedule": "График игр",
-        "documents": "Документация",
-        "bonuses": "Бонусы",
-        "training_video": "Обучающее видео",
-        "language": "🌐 Язык",
-    },
-    "kk": {
-        "my_status": "Менің мәртебем",
-        "payment_status": "Төлем мәртебесі",
-        "training_schedule": "Жаттығу кестесі",
-        "playbook": "Playbook",
-        "games_schedule": "Ойындар кестесі",
-        "documents": "Құжаттар",
-        "bonuses": "Бонустар",
-        "training_video": "Оқу видеолары",
-        "language": "🌐 Тіл",
-    },
-    "en": {
-        "my_status": "My status",
-        "payment_status": "Payment status",
-        "training_schedule": "Training schedule",
-        "playbook": "Playbook",
-        "games_schedule": "Games schedule",
-        "documents": "Documents",
-        "bonuses": "Bonuses",
-        "training_video": "Training videos",
-        "language": "🌐 Language",
-    },
-}
-
-
-def get_player_menu_texts(language_code: str = "ru"):
-    return PLAYER_MENU_TEXTS.get(language_code, PLAYER_MENU_TEXTS["ru"])
-
-
-def get_player_menu_action(text: str):
-    for language_texts in PLAYER_MENU_TEXTS.values():
-        for action, button_text in language_texts.items():
-            if text == button_text:
-                return action
-
-    return None
-
-
-def get_language_select_menu():
-    keyboard = [
-        ["🇷🇺 Русский"],
-        ["🇰🇿 Қазақша"],
-        ["🇬🇧 English"],
-    ]
-
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-
-def get_approved_player_menu(language_code: str = "ru"):
-    t = get_player_menu_texts(language_code)
-
-    keyboard = [
-        [t["my_status"], t["payment_status"]],
-        [t["training_schedule"], t["playbook"]],
-        [t["games_schedule"], t["documents"]],
-        [t["bonuses"], t["training_video"]],
-        [t["language"]],
-    ]
-
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
