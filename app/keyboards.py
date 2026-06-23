@@ -269,6 +269,12 @@ def get_training_video_links_keyboard():
     keyboard = [
         [
             InlineKeyboardButton(
+                "🎥 Открыть YouTube-канал",
+                url="https://www.youtube.com/@36%D0%A1%D1%82%D1%83%D0%B4%D0%B8%D1%8F/featured"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 "Лекция 1",
                 url="https://www.youtube.com/watch?v=gUgExXMlAHQ&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC"
             )
@@ -298,5 +304,11 @@ def get_training_video_links_keyboard():
             )
         ],
         [
+            InlineKeyboardButton(
+                "📚 Плейлист",
+                url="https://youtube.com/playlist?list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&si=hBrOYjgnpB2Kfolf"
+            )
+        ],
+    ]
 
     return InlineKeyboardMarkup(keyboard)
