@@ -589,11 +589,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"Не удалось отправить сообщение об одобрении игроку {target_user_id}: {e}")
 
         try:
+            language_code = get_user_language(target_user_id)
+
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text=build_new_player_payment_message(existing_user[2]),
+                text=build_new_player_payment_message(existing_user[2], language_code),
                 reply_markup=get_payment_keyboard(),
             )
+
             payment_message_sent = True
             add_payment_history(
                 user_id=target_user_id,

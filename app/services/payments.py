@@ -20,6 +20,8 @@ from app.repositories.payments import (
 from app.repositories.users import add_or_update_user, get_user_by_id
 from app.services.access import is_broadcast_recipient
 from app.utils.dates import get_month_name_prepositional
+from app.i18n import t
+from app.repositories.users import get_user_language
 
 
 def get_payment_keyboard():
@@ -35,33 +37,59 @@ def plural_days(days: int) -> str:
         return "дня"
     return "дней"
 
+def plural_days_by_language(days: int, language_code: str) -> str:
+    if language_code == "ru":
+        if days % 10 == 1 and days % 100 != 11:
+            return t(language_code, "days_1")
 
-def build_subscription_ending_message(first_name: str | None, days_left: int) -> str:
-    name = first_name or "игрок"
-    days_word = plural_days(days_left)
+        if 2 <= days % 10 <= 4 and not 12 <= days % 100 <= 14:
+            return t(language_code, "days_2_4")
 
-    return (
-        f"Добрый день, {name}. "
-        f"Напоминаем вам, что действие вашего абонемента заканчивается через {days_left} {days_word}. "
-        "Пожалуйста, не забудьте оплатить продление."
+        return t(language_code, "days_many")
+
+    if language_code == "en":
+        return t(language_code, "days_1") if days == 1 else t(language_code, "days_many")
+
+    return t(language_code, "days_many")
+
+
+def build_subscription_ending_message(
+    first_name: str | None,
+    days_left: int,
+    language_code: str = "ru",
+) -> str:
+    name = first_name or t(language_code, "player_default_name")
+    days_word = plural_days_by_language(days_left, language_code)
+
+    return t(
+        language_code,
+        "payment_subscription_ending",
+        name=name,
+        days_left=days_left,
+        days_word=days_word,
     )
 
 
-def build_payment_reminder_message() -> str:
+def build_payment_reminder_message(language_code: str = "ru") -> str:
     month_name = get_month_name_prepositional(datetime.now(TIMEZONE))
-    return (
-        f"Добрый вечер. Напоминаем об оплате абонемента в {month_name}. "
-        "Пожалуйста, произведите оплату."
+
+    return t(
+        language_code,
+        "payment_reminder",
+        month_name=month_name,
     )
 
 
-def build_new_player_payment_message(first_name: str | None) -> str:
-    name = first_name or "игрок"
-    return (
-        "💳 Оплата абонемента\n\n"
-        f"{name}, после одобрения заявки необходимо оплатить абонемент "
-        "за текущий месяц.\n\n"
-        "После оплаты нажми кнопку «💸 Оплатил»."
+def build_new_player_payment_message(
+    first_name: str | None,
+    language_code: str = "ru",
+) -> str:
+    name = first_name or t(language_code, "player_default_name")
+
+    return t(
+        language_code,
+        "new_player_payment",
+        name=name,
     )
 
 
@@ -98,15 +126,12 @@ def is_payment_collection_period(today) -> bool:
     return 28 <= today.day <= last_day
 
 
-def build_final_payment_warning_message() -> str:
-    return (
-        "Вы не оплатили месячный абонемент в команду по Американскому футболу "
-        "«ФЕНИКСЫ». Сегодня вы будете удалены из команды."
-    )
+def build_final_payment_warning_message(language_code: str = "ru") -> str:
+    return t(language_code, "final_payment_warning")
 
 
-def build_removed_from_team_message() -> str:
-    return "Вы были удалены из команды."
+def build_removed_from_team_message(language_code: str = "ru") -> str:
+    return t(language_code, "removed_from_team_payment")
 
 def get_unpaid_monthly_players(today):
     """
@@ -194,13 +219,20 @@ async def notify_coaches_about_removed_players(
     return success_count, fail_count
 
 
-def build_subscription_overdue_message(first_name: str | None, overdue_days: int) -> str:
-    name = first_name or "игрок"
-    days_word = plural_days(overdue_days)
+def build_subscription_overdue_message(
+    first_name: str | None,
+    overdue_days: int,
+    language_code: str = "ru",
+) -> str:
+    name = first_name or t(language_code, "player_default_name")
+    days_word = plural_days_by_language(overdue_days, language_code)
 
-    return (
-        f"Добрый день, {name}. Напоминаем, что срок действия вашего абонемента уже истёк. "
-        f"Просрочка: {overdue_days} {days_word}. Пожалуйста, оплатите продление."
+    return t(
+        language_code,
+        "payment_subscription_overdue",
+        name=name,
+        overdue_days=overdue_days,
+        days_word=days_word,
     )
 
 
@@ -244,7 +276,8 @@ async def send_subscription_ending_reminders(context: ContextTypes.DEFAULT_TYPE)
         if days_left not in days_set:
             continue
 
-        message_text = build_subscription_ending_message(first_name, days_left)
+        language_code = get_user_language(user_id)
+        message_text = build_subscription_ending_message(first_name, days_left, language_code)
 
         try:
             await context.bot.send_message(
@@ -296,7 +329,8 @@ async def send_subscription_overdue_reminders(context: ContextTypes.DEFAULT_TYPE
         if overdue_days <= 0:
             continue
 
-        message_text = build_subscription_overdue_message(first_name, overdue_days)
+        language_code = get_user_language(user_id)
+        message_text = build_subscription_ending_message(first_name, days_left, language_code)
 
         try:
             await context.bot.send_message(
@@ -329,7 +363,6 @@ async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
 
     success_count = 0
     fail_count = 0
-    message_text = build_payment_reminder_message()
     reply_markup = get_payment_keyboard()
 
     for (
@@ -346,6 +379,9 @@ async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
     ) in subscriptions:
         if not is_broadcast_recipient(user_id):
             continue
+
+        language_code = get_user_language(user_id)
+        message_text = build_payment_reminder_message(language_code)
 
         try:
             await context.bot.send_message(
@@ -381,7 +417,6 @@ async def send_payment_due_today_reminders(context: ContextTypes.DEFAULT_TYPE):
 
     success_count = 0
     fail_count = 0
-    message_text = build_payment_reminder_message()
     reply_markup = get_payment_keyboard()
 
     for (
@@ -398,6 +433,9 @@ async def send_payment_due_today_reminders(context: ContextTypes.DEFAULT_TYPE):
     ) in subscriptions:
         if not is_broadcast_recipient(user_id):
             continue
+
+        language_code = get_user_language(user_id)
+        message_text = build_payment_reminder_message(language_code)
 
         try:
             await context.bot.send_message(
@@ -464,12 +502,15 @@ async def send_payment_collection_hourly_reminders(context: ContextTypes.DEFAULT
 
         if subscription_end_date and subscription_end_date < today:
             overdue_days = (today - subscription_end_date).days
+            language_code = get_user_language(user_id)
+
             message_text = build_subscription_overdue_message(
                 first_name=first_name,
                 overdue_days=overdue_days,
+                language_code=language_code,
             )
         else:
-            message_text = build_payment_reminder_message()
+            message_text = build_payment_reminder_message(language_code)
 
         try:
             await context.bot.send_message(
@@ -506,7 +547,6 @@ async def send_final_payment_warning_reminders(context: ContextTypes.DEFAULT_TYP
 
     success_count = 0
     fail_count = 0
-    message_text = build_final_payment_warning_message()
     reply_markup = get_payment_keyboard()
 
     for (
@@ -523,6 +563,9 @@ async def send_final_payment_warning_reminders(context: ContextTypes.DEFAULT_TYP
     ) in subscriptions:
         if not is_broadcast_recipient(user_id):
             continue
+
+        language_code = get_user_language(user_id)
+        message_text = build_final_payment_warning_message(language_code)
 
         try:
             await context.bot.send_message(
@@ -598,7 +641,7 @@ async def remove_unpaid_players_from_team(context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=user_id,
-                text=build_removed_from_team_message(),
+                text=build_removed_from_team_message(get_user_language(user_id)),
             )
         except Exception as e:
             print(f"Не удалось отправить сообщение об удалении игроку {user_id}: {e}")
