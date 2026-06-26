@@ -358,71 +358,9 @@ def build_player_trainings_keyboard(schedule, language_code: str = "ru") -> list
 
     return result
 
-    grouped = {}
-    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
-        key = (training_date.year, training_date.month)
-        grouped.setdefault(key, []).append((schedule_id, training_date, training_time, comment))
-
-    result = []
-
-    for (year, month), items in grouped.items():
-        rows = []
-        current_row = []
-
-        for schedule_id, training_date, training_time, comment in items:
-            current_row.append(
-                InlineKeyboardButton(
-                    str(training_date.day),
-                    callback_data=f"training_player_view_{schedule_id}",
-                )
-            )
-
-            if len(current_row) == 4:
-                rows.append(current_row)
-                current_row = []
-
-        if current_row:
-            rows.append(current_row)
-
-        title = f"{months[month]} {year}"
-        result.append((title, InlineKeyboardMarkup(rows)))
-
-    return result
-
 
 def build_player_games_keyboard(schedule, language_code: str = "ru") -> list[tuple[str, InlineKeyboardMarkup]]:
     months = MONTHS_BY_LANGUAGE.get(language_code, MONTHS_BY_LANGUAGE["ru"])
-
-    grouped = {}
-    for game_id, game_date, game_time, opponent_name, comment, is_active, created_at in schedule:
-        key = (game_date.year, game_date.month)
-        grouped.setdefault(key, []).append((game_id, game_date, game_time, opponent_name, comment))
-
-    result = []
-
-    for (year, month), items in grouped.items():
-        rows = []
-        current_row = []
-
-        for game_id, game_date, game_time, opponent_name, comment in items:
-            current_row.append(
-                InlineKeyboardButton(
-                    str(game_date.day),
-                    callback_data=f"game_player_view_{game_id}",
-                )
-            )
-
-            if len(current_row) == 4:
-                rows.append(current_row)
-                current_row = []
-
-        if current_row:
-            rows.append(current_row)
-
-        title = f"{months[month]} {year}"
-        result.append((title, InlineKeyboardMarkup(rows)))
-
-    return result
 
     grouped = {}
     for game_id, game_date, game_time, opponent_name, comment, is_active, created_at in schedule:
@@ -558,7 +496,8 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
     subscription = get_subscription_by_user_id(update.effective_user.id)
 
     if not subscription:
-        await update.message.reply_text("💳 Данные по оплате пока не заполнены.")
+        language_code = get_player_language(update.effective_user.id)
+        await update.message.reply_text(player_text(language_code, "payment_no_data"))
         return
 
     (
@@ -574,7 +513,13 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     today = date.today()
 
-    paid_text = "да" if is_paid_current_period else "нет"
+    language_code = get_player_language(update.effective_user.id)
+
+    paid_text = (
+        player_text(language_code, "paid_yes")
+        if is_paid_current_period
+        else player_text(language_code, "paid_no")
+    )
 
     if subscription_end_date:
         days_left = (subscription_end_date - today).days
@@ -584,10 +529,11 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         days_left = get_days_until_next_payment(payment_day)
 
     await update.message.reply_text(
-        "💳 Статус оплаты\n\n"
-        f"Оплачено: {paid_text}\n"
-        f"Абонемент до: {subscription_end_date.strftime('%d.%m.%Y') if subscription_end_date else 'не указано'}\n"
-        f"Осталось дней: {days_left}"
+        f"{player_text(language_code, 'payment_title')}\n\n"
+        f"{player_text(language_code, 'paid')}: {paid_text}\n"
+        f"{player_text(language_code, 'subscription_until')}: "
+        f"{subscription_end_date.strftime('%d.%m.%Y') if subscription_end_date else player_text(language_code, 'not_set')}\n"
+        f"{player_text(language_code, 'days_left')}: {days_left}"
     )
 
 
@@ -684,10 +630,12 @@ async def show_refereeing_guide(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def show_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+
     bonuses = get_player_bonuses(update.effective_user.id)
     subscription = get_subscription_by_user_id(update.effective_user.id)
 
-    prepaid_text = "нет"
+    prepaid_text = player_text(language_code, "paid_no")
 
     if subscription:
         (
@@ -704,27 +652,39 @@ async def show_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
         today = date.today()
 
         if subscription_end_date and subscription_end_date > today:
-            prepaid_text = f"оплачено до {subscription_end_date.strftime('%d.%m.%Y')}"
+            prepaid_text = (
+                f"{player_text(language_code, 'prepaid_until')} "
+                f"{subscription_end_date.strftime('%d.%m.%Y')}"
+            )
 
     if not bonuses:
         await update.message.reply_text(
-            "🎁 Бонусы\n\n"
-            "Скидка за посещение всех тренировок: нет\n"
-            "Бесплатный абонемент за приведенного игрока: нет\n"
-            f"Предоплата тренировок: {prepaid_text}"
+            f"{player_text(language_code, 'bonuses_title')}\n\n"
+            f"{player_text(language_code, 'attendance_bonus')}: {player_text(language_code, 'paid_no')}\n"
+            f"{player_text(language_code, 'referral_bonus')}: {player_text(language_code, 'paid_no')}\n"
+            f"{player_text(language_code, 'prepaid_trainings')}: {prepaid_text}"
         )
         return
 
     full_attendance_bonus, referral_bonus = bonuses
 
-    attendance_text = "получен" if full_attendance_bonus else "нет"
-    referral_text = "получен" if referral_bonus else "нет"
+    attendance_text = (
+        player_text(language_code, "received")
+        if full_attendance_bonus
+        else player_text(language_code, "paid_no")
+    )
+
+    referral_text = (
+        player_text(language_code, "received")
+        if referral_bonus
+        else player_text(language_code, "paid_no")
+    )
 
     await update.message.reply_text(
-        "🎁 Бонусы\n\n"
-        f"Скидка за посещение всех тренировок: {attendance_text}\n"
-        f"Бесплатный абонемент за приведенного игрока: {referral_text}\n"
-        f"Предоплата тренировок: {prepaid_text}"
+        f"{player_text(language_code, 'bonuses_title')}\n\n"
+        f"{player_text(language_code, 'attendance_bonus')}: {attendance_text}\n"
+        f"{player_text(language_code, 'referral_bonus')}: {referral_text}\n"
+        f"{player_text(language_code, 'prepaid_trainings')}: {prepaid_text}"
     )
 
 
