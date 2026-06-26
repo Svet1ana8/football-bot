@@ -781,8 +781,8 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "Обучающее видео":
         await update.message.reply_text(
-            "🎥 Обучающее видео\n\n"
-            "Выбери нужную лекцию:",
+            "🎥 Обучающие видео по американскому футболу\n\n"
+            "Выбери нужный раздел или открой YouTube-канал:",
             reply_markup=get_training_video_links_keyboard()
         )
         return

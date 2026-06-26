@@ -270,43 +270,43 @@ def get_training_video_links_keyboard():
         [
             InlineKeyboardButton(
                 "🎥 Открыть YouTube-канал",
-                url="https://www.youtube.com/@36%D0%A1%D1%82%D1%83%D0%B4%D0%B8%D1%8F/featured"
+                url="https://www.youtube.com/@36%D0%A1%D1%82%D1%83%D0%B4%D0%B8%D1%8F"
             )
         ],
         [
             InlineKeyboardButton(
-                "Лекция 1",
+                "🏈 Лекция 1",
                 url="https://www.youtube.com/watch?v=gUgExXMlAHQ&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC"
             )
         ],
         [
             InlineKeyboardButton(
-                "Лекция 2",
+                "🏃 Лекция 2",
                 url="https://www.youtube.com/watch?v=_xA4Yn9QVFM&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=2"
             )
         ],
         [
             InlineKeyboardButton(
-                "Лекция 3",
+                "🛡 Лекция 3",
                 url="https://www.youtube.com/watch?v=MnlPSHuGqC4&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=3"
             )
         ],
         [
             InlineKeyboardButton(
-                "Лекция 4",
+                "🛡 Лекция 4",
                 url="https://www.youtube.com/watch?v=Xyy7i3tGRrY&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=4"
             )
         ],
         [
             InlineKeyboardButton(
-                "Лекция 5",
+                "🛡 Лекция 5",
                 url="https://www.youtube.com/watch?v=dLeCd5DM_3w&list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&index=5"
             )
         ],
         [
             InlineKeyboardButton(
                 "📚 Плейлист",
-                url="https://youtube.com/playlist?list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&si=hBrOYjgnpB2Kfolf"
+                url="https://youtube.com/playlist?list=PLZ8Fx36DixRqT2xj8t8Fg5ZKmyw975ukC&si=TW3PrWh6nfv6ixGM"
             )
         ],
     ]
