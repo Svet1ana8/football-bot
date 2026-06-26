@@ -134,6 +134,13 @@ PLAYER_TEXTS = {
         "received": "получен",
         "prepaid_until": "оплачено до",
         "not_added": "скоро будет добавлено.",
+        "status_approved": "✅ Твой статус: одобрен",
+        "subscription": "Абонемент",
+        "subscription_monthly": "месячный",
+        "subscription_game": "игровой",
+        "price": "Стоимость",
+        "monthly_description": "Ты регулярно посещаешь тренировки.\nПолучаешь высший приоритет в участии в играх.",
+        "game_description": "Ты можешь принимать участие в играх.\nТренер сам определит тебя на позицию.",
     },
     "kk": {
         "back_to_menu": "Ойыншы мәзіріне қайтардым.",
@@ -161,6 +168,13 @@ PLAYER_TEXTS = {
         "received": "алынды",
         "prepaid_until": "төленген күні",
         "not_added": "жақында қосылады.",
+        "status_approved": "✅ Сенің мәртебең: мақұлданды",
+        "subscription": "Абонемент",
+        "subscription_monthly": "айлық",
+        "subscription_game": "ойындық",
+        "price": "Бағасы",
+        "monthly_description": "Сен жаттығуларға тұрақты қатысасың.\nОйындарға қатысуға жоғары басымдық аласың.",
+        "game_description": "Сен ойындарға қатыса аласың.\nЖаттықтырушы сенің позицияңды өзі анықтайды.",
     },
     "en": {
         "back_to_menu": "Returning to player menu.",
@@ -188,9 +202,33 @@ PLAYER_TEXTS = {
         "received": "received",
         "prepaid_until": "paid until",
         "not_added": "will be added soon.",
+        "status_approved": "✅ Your status: approved",
+        "subscription": "Subscription",
+        "subscription_monthly": "monthly",
+        "subscription_game": "game",
+        "price": "Price",
+        "monthly_description": "You regularly attend practices.\nYou get the highest priority for game participation.",
+        "game_description": "You can participate in games.\nThe coach will assign your position.",
     },
 }
 
+MONTHS_BY_LANGUAGE = {
+    "ru": {
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+    },
+    "kk": {
+        1: "Қаңтар", 2: "Ақпан", 3: "Наурыз", 4: "Сәуір",
+        5: "Мамыр", 6: "Маусым", 7: "Шілде", 8: "Тамыз",
+        9: "Қыркүйек", 10: "Қазан", 11: "Қараша", 12: "Желтоқсан",
+    },
+    "en": {
+        1: "January", 2: "February", 3: "March", 4: "April",
+        5: "May", 6: "June", 7: "July", 8: "August",
+        9: "September", 10: "October", 11: "November", 12: "December",
+    },
+}
 
 def player_text(language_code: str, key: str) -> str:
     if language_code not in PLAYER_TEXTS:
@@ -286,21 +324,39 @@ def get_days_until_next_payment(payment_day: int) -> int:
     return (next_payment_date - today).days
 
 
-def build_player_trainings_keyboard(schedule) -> list[tuple[str, InlineKeyboardMarkup]]:
-    months = {
-        1: "Январь",
-        2: "Февраль",
-        3: "Март",
-        4: "Апрель",
-        5: "Май",
-        6: "Июнь",
-        7: "Июль",
-        8: "Август",
-        9: "Сентябрь",
-        10: "Октябрь",
-        11: "Ноябрь",
-        12: "Декабрь",
-    }
+def build_player_trainings_keyboard(schedule, language_code: str = "ru") -> list[tuple[str, InlineKeyboardMarkup]]:
+    months = MONTHS_BY_LANGUAGE.get(language_code, MONTHS_BY_LANGUAGE["ru"])
+
+    grouped = {}
+    for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
+        key = (training_date.year, training_date.month)
+        grouped.setdefault(key, []).append((schedule_id, training_date, training_time, comment))
+
+    result = []
+
+    for (year, month), items in grouped.items():
+        rows = []
+        current_row = []
+
+        for schedule_id, training_date, training_time, comment in items:
+            current_row.append(
+                InlineKeyboardButton(
+                    str(training_date.day),
+                    callback_data=f"training_player_view_{schedule_id}",
+                )
+            )
+
+            if len(current_row) == 4:
+                rows.append(current_row)
+                current_row = []
+
+        if current_row:
+            rows.append(current_row)
+
+        title = f"{months[month]} {year}"
+        result.append((title, InlineKeyboardMarkup(rows)))
+
+    return result
 
     grouped = {}
     for schedule_id, training_date, training_time, comment, is_active, created_at in schedule:
@@ -334,21 +390,39 @@ def build_player_trainings_keyboard(schedule) -> list[tuple[str, InlineKeyboardM
     return result
 
 
-def build_player_games_keyboard(schedule) -> list[tuple[str, InlineKeyboardMarkup]]:
-    months = {
-        1: "Январь",
-        2: "Февраль",
-        3: "Март",
-        4: "Апрель",
-        5: "Май",
-        6: "Июнь",
-        7: "Июль",
-        8: "Август",
-        9: "Сентябрь",
-        10: "Октябрь",
-        11: "Ноябрь",
-        12: "Декабрь",
-    }
+def build_player_games_keyboard(schedule, language_code: str = "ru") -> list[tuple[str, InlineKeyboardMarkup]]:
+    months = MONTHS_BY_LANGUAGE.get(language_code, MONTHS_BY_LANGUAGE["ru"])
+
+    grouped = {}
+    for game_id, game_date, game_time, opponent_name, comment, is_active, created_at in schedule:
+        key = (game_date.year, game_date.month)
+        grouped.setdefault(key, []).append((game_id, game_date, game_time, opponent_name, comment))
+
+    result = []
+
+    for (year, month), items in grouped.items():
+        rows = []
+        current_row = []
+
+        for game_id, game_date, game_time, opponent_name, comment in items:
+            current_row.append(
+                InlineKeyboardButton(
+                    str(game_date.day),
+                    callback_data=f"game_player_view_{game_id}",
+                )
+            )
+
+            if len(current_row) == 4:
+                rows.append(current_row)
+                current_row = []
+
+        if current_row:
+            rows.append(current_row)
+
+        title = f"{months[month]} {year}"
+        result.append((title, InlineKeyboardMarkup(rows)))
+
+    return result
 
     grouped = {}
     for game_id, game_date, game_time, opponent_name, comment, is_active, created_at in schedule:
@@ -393,7 +467,7 @@ async def show_games_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await update.message.reply_text(player_text(language_code, "games_title"))
 
-    month_keyboards = build_player_games_keyboard(schedule)
+    month_keyboards = build_player_games_keyboard(schedule, language_code)
 
     for title, reply_markup in month_keyboards:
         await update.message.reply_text(title, reply_markup=reply_markup)
@@ -439,10 +513,12 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     subscription = get_subscription_by_user_id(user.id)
 
-    text = "✅ Твой статус: одобрен\n"
+    language_code = get_player_language(user.id)
+
+    text = f"{player_text(language_code, 'status_approved')}\n"
 
     if not subscription:
-        text += "\nАбонемент: не указан"
+        text += f"\n{player_text(language_code, 'subscription')}: {player_text(language_code, 'not_set')}"
         await update.message.reply_text(text)
         return
 
@@ -457,23 +533,21 @@ async def my_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payment_claimed,
     ) = subscription
 
-    subscription_type_text = "месячный"
+    subscription_type_text = player_text(language_code, "subscription_monthly")
     subscription_description = (
-        "Стоимость: 25 000 тенге\n"
-        "Ты регулярно посещаешь тренировки. "
-        "Получаешь высший приоритет в участии в играх."
+        f"{player_text(language_code, 'price')}: 25 000 тенге\n"
+        f"{player_text(language_code, 'monthly_description')}"
     )
 
     if subscription_type == "game":
-        subscription_type_text = "игровой"
+        subscription_type_text = player_text(language_code, "subscription_game")
         subscription_description = (
-            "Стоимость: 30 000 тенге\n"
-            "Ты можешь принимать участие в играх. "
-            "Тренер сам определит тебя на позицию."
+            f"{player_text(language_code, 'price')}: 30 000 тенге\n"
+            f"{player_text(language_code, 'game_description')}"
         )
 
     text += (
-        f"\nАбонемент: {subscription_type_text}\n"
+        f"\n{player_text(language_code, 'subscription')}: {subscription_type_text}\n"
         f"{subscription_description}"
     )
 
@@ -528,7 +602,7 @@ async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_T
 
     await update.message.reply_text(player_text(language_code, "trainings_title"))
 
-    month_keyboards = build_player_trainings_keyboard(schedule)
+    month_keyboards = build_player_trainings_keyboard(schedule, language_code)
 
     for title, reply_markup in month_keyboards:
         await update.message.reply_text(title, reply_markup=reply_markup)
