@@ -48,3 +48,34 @@ def delete_user(user_id: int):
             deleted = cur.rowcount > 0
         conn.commit()
     return deleted
+
+def get_user_language(user_id: int) -> str:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COALESCE(language_code, 'ru')
+                FROM users
+                WHERE user_id = %s
+            """, (user_id,))
+
+            row = cur.fetchone()
+
+    if not row:
+        return "ru"
+
+    return row[0] or "ru"
+
+
+def set_user_language(user_id: int, language_code: str):
+    if language_code not in ("ru", "kk", "en"):
+        language_code = "ru"
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE users
+                SET language_code = %s
+                WHERE user_id = %s
+            """, (language_code, user_id))
+
+        conn.commit()

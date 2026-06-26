@@ -29,13 +29,72 @@ def get_player_menu():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def get_approved_player_menu():
+PLAYER_MENU_LABELS = {
+    "ru": {
+        "my_status": "Мой статус",
+        "payment_status": "Статус оплаты",
+        "training_schedule": "График тренировок",
+        "playbook": "Playbook",
+        "game_schedule": "График игр",
+        "documents": "Документация",
+        "bonuses": "Бонусы",
+        "training_video": "Обучающее видео",
+        "language": "🌐 Язык / Тіл / Language",
+    },
+    "kk": {
+        "my_status": "Менің мәртебем",
+        "payment_status": "Төлем мәртебесі",
+        "training_schedule": "Жаттығу кестесі",
+        "playbook": "Playbook",
+        "game_schedule": "Ойындар кестесі",
+        "documents": "Құжаттар",
+        "bonuses": "Бонустар",
+        "training_video": "Оқу видеолары",
+        "language": "🌐 Тіл",
+    },
+    "en": {
+        "my_status": "My status",
+        "payment_status": "Payment status",
+        "training_schedule": "Training schedule",
+        "playbook": "Playbook",
+        "game_schedule": "Game schedule",
+        "documents": "Documents",
+        "bonuses": "Bonuses",
+        "training_video": "Training videos",
+        "language": "🌐 Language",
+    },
+}
+
+
+def normalize_language_code(language_code: str | None) -> str:
+    if language_code in PLAYER_MENU_LABELS:
+        return language_code
+
+    return "ru"
+
+
+def get_approved_player_menu(language_code: str = "ru"):
+    labels = PLAYER_MENU_LABELS[normalize_language_code(language_code)]
+
     keyboard = [
-        ["Мой статус", "Статус оплаты"],
-        ["График тренировок", "Playbook"],
-        ["График игр", "Документация"],
-        ["Бонусы", "Обучающее видео"],
+        [labels["my_status"], labels["payment_status"]],
+        [labels["training_schedule"], labels["playbook"]],
+        [labels["game_schedule"], labels["documents"]],
+        [labels["bonuses"], labels["training_video"]],
+        [labels["language"]],
     ]
+
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+
+def get_language_menu():
+    keyboard = [
+        ["🇷🇺 Русский"],
+        ["🇰🇿 Қазақша"],
+        ["🇬🇧 English"],
+        ["Назад"],
+    ]
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 

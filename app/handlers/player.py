@@ -44,13 +44,60 @@ from app.keyboards import (
     get_special_teams_video_menu,
     get_video_menu,
     get_training_video_links_keyboard,
+    get_language_menu,
+    PLAYER_MENU_LABELS,
 )
 from app.repositories.game_schedule import get_upcoming_game_schedule
 from app.repositories.payments import get_player_bonuses, get_subscription_by_user_id
 from app.repositories.training_schedule import get_upcoming_training_schedule
-from app.repositories.users import add_or_update_user, get_user_by_id
+from app.repositories.users import (
+    add_or_update_user,
+    get_user_by_id,
+    get_user_language,
+    set_user_language,
+)
 from app.services.access import is_coach
 from app.services.notifications import notify_coaches_about_request
+
+LANGUAGE_BUTTON_TO_CODE = {
+    "🇷🇺 Русский": "ru",
+    "🇰🇿 Қазақша": "kk",
+    "🇬🇧 English": "en",
+}
+
+
+LANGUAGE_SELECTED_TEXT = {
+    "ru": "✅ Язык меню изменён на русский.",
+    "kk": "✅ Мәзір тілі қазақ тіліне өзгертілді.",
+    "en": "✅ Menu language changed to English.",
+}
+
+
+PLAYER_ACTION_TO_RU_TEXT = {
+    "my_status": "Мой статус",
+    "payment_status": "Статус оплаты",
+    "training_schedule": "График тренировок",
+    "playbook": "Playbook",
+    "game_schedule": "График игр",
+    "documents": "Документация",
+    "bonuses": "Бонусы",
+    "training_video": "Обучающее видео",
+}
+
+
+def get_player_menu_action(text: str) -> str | None:
+    normalized_text = text.strip()
+
+    for labels in PLAYER_MENU_LABELS.values():
+        for action, label in labels.items():
+            if normalized_text == label:
+                return action
+
+    return None
+
+
+def get_player_language(user_id: int) -> str:
+    return get_user_language(user_id) or "ru"
 
 
 def reset_coach_temp_state(context: ContextTypes.DEFAULT_TYPE):
@@ -558,9 +605,11 @@ async def show_video_punter(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def back_to_player_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+
     await update.message.reply_text(
         "Возвращаю в меню игрока.",
-        reply_markup=get_approved_player_menu()
+        reply_markup=get_approved_player_menu(language_code)
     )
 
 
@@ -568,6 +617,28 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user = update.effective_user
     existing_user = get_user_by_id(user.id)
+
+    player_action = get_player_menu_action(text)
+
+    if player_action == "language":
+        await update.message.reply_text(
+            "Выбери язык меню / Мәзір тілін таңда / Choose menu language:",
+            reply_markup=get_language_menu()
+        )
+        return
+
+    if text in LANGUAGE_BUTTON_TO_CODE:
+        language_code = LANGUAGE_BUTTON_TO_CODE[text]
+        set_user_language(user.id, language_code)
+
+        await update.message.reply_text(
+            LANGUAGE_SELECTED_TEXT[language_code],
+            reply_markup=get_approved_player_menu(language_code)
+        )
+        return
+
+    if player_action in PLAYER_ACTION_TO_RU_TEXT:
+        text = PLAYER_ACTION_TO_RU_TEXT[player_action]
 
     if text == "Назад":
         reset_coach_temp_state(context)
