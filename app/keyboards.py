@@ -40,6 +40,29 @@ PLAYER_MENU_LABELS = {
         "bonuses": "Бонусы",
         "training_video": "Обучающее видео",
         "language": "🌐 Язык / Тіл / Language",
+
+        "back": "Назад",
+        "offense": "Нападение",
+        "defense": "Защита",
+
+        "ifaf_rules": "Правила игры IFAF 2025",
+        "chrk_regulations": "Регламент ЧРК",
+        "refereeing_guide": "Руководство по судейству",
+
+        "video_offense": "Видео: Нападение",
+        "video_defense": "Видео: Защита",
+        "video_special_teams": "Видео: Спецкоманды",
+        "video_linear_offense": "Видео: Линейные нападение",
+        "video_receivers": "Видео: Принимающие",
+        "video_qb": "Видео: Квотербек",
+        "video_running_backs": "Видео: Бегущие",
+        "video_linear_defense": "Видео: Линейные защита",
+        "video_linebackers": "Видео: Лайнбекеры",
+        "video_corners": "Видео: Корнеры",
+        "video_safeties": "Видео: Сейфти",
+        "video_kicker": "Видео: Кикер",
+        "video_longsnapper": "Видео: Лонгснэппер",
+        "video_punter": "Видео: Пантер",
     },
     "kk": {
         "my_status": "Менің мәртебем",
@@ -51,6 +74,29 @@ PLAYER_MENU_LABELS = {
         "bonuses": "Бонустар",
         "training_video": "Оқу видеолары",
         "language": "🌐 Тіл",
+
+        "back": "Артқа",
+        "offense": "Шабуыл",
+        "defense": "Қорғаныс",
+
+        "ifaf_rules": "IFAF 2025 ойын ережелері",
+        "chrk_regulations": "ҚРЧ регламенті",
+        "refereeing_guide": "Төрешілік нұсқаулығы",
+
+        "video_offense": "Видео: Шабуыл",
+        "video_defense": "Видео: Қорғаныс",
+        "video_special_teams": "Видео: Арнайы командалар",
+        "video_linear_offense": "Видео: Шабуыл шебі",
+        "video_receivers": "Видео: Қабылдаушылар",
+        "video_qb": "Видео: Квотербек",
+        "video_running_backs": "Видео: Жүгіретін ойыншылар",
+        "video_linear_defense": "Видео: Қорғаныс шебі",
+        "video_linebackers": "Видео: Лайнбекерлер",
+        "video_corners": "Видео: Корнерлер",
+        "video_safeties": "Видео: Сейфти",
+        "video_kicker": "Видео: Кикер",
+        "video_longsnapper": "Видео: Лонгснэппер",
+        "video_punter": "Видео: Пантер",
     },
     "en": {
         "my_status": "My status",
@@ -62,6 +108,29 @@ PLAYER_MENU_LABELS = {
         "bonuses": "Bonuses",
         "training_video": "Training videos",
         "language": "🌐 Language",
+
+        "back": "Back",
+        "offense": "Offense",
+        "defense": "Defense",
+
+        "ifaf_rules": "IFAF 2025 rules",
+        "chrk_regulations": "KAF regulations",
+        "refereeing_guide": "Refereeing guide",
+
+        "video_offense": "Video: Offense",
+        "video_defense": "Video: Defense",
+        "video_special_teams": "Video: Special teams",
+        "video_linear_offense": "Video: Offensive line",
+        "video_receivers": "Video: Receivers",
+        "video_qb": "Video: Quarterback",
+        "video_running_backs": "Video: Running backs",
+        "video_linear_defense": "Video: Defensive line",
+        "video_linebackers": "Video: Linebackers",
+        "video_corners": "Video: Corners",
+        "video_safeties": "Video: Safeties",
+        "video_kicker": "Video: Kicker",
+        "video_longsnapper": "Video: Long snapper",
+        "video_punter": "Video: Punter",
     },
 }
 
@@ -87,68 +156,88 @@ def get_approved_player_menu(language_code: str = "ru"):
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def get_language_menu():
+def get_language_menu(language_code: str = "ru"):
+    labels = PLAYER_MENU_LABELS[normalize_language_code(language_code)]
+
     keyboard = [
         ["🇷🇺 Русский"],
         ["🇰🇿 Қазақша"],
         ["🇬🇧 English"],
-        ["Назад"],
+        [labels["back"]],
     ]
 
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def get_playbook_menu():
+def get_playbook_menu(language_code: str = "ru"):
+    labels = PLAYER_MENU_LABELS[normalize_language_code(language_code)]
+
     keyboard = [
-        ["Нападение", "Защита"],
-        ["Назад"],
+        [labels["offense"], labels["defense"]],
+        [labels["back"]],
     ]
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def get_documents_menu():
+def get_documents_menu(language_code: str = "ru"):
+    labels = PLAYER_MENU_LABELS[normalize_language_code(language_code)]
+
     keyboard = [
-        ["Правила игры IFAF 2025"],
-        ["Регламент ЧРК"],
-        ["Руководство по судейству"],
-        ["Назад"],
+        [labels["ifaf_rules"]],
+        [labels["chrk_regulations"]],
+        [labels["refereeing_guide"]],
+        [labels["back"]],
     ]
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def get_video_menu():
+def get_video_menu(language_code: str = "ru"):
+    labels = PLAYER_MENU_LABELS[normalize_language_code(language_code)]
+
     keyboard = [
-        ["Видео: Нападение", "Видео: Защита"],
-        ["Видео: Спецкоманды"],
-        ["Назад"],
+        [labels["video_offense"], labels["video_defense"]],
+        [labels["video_special_teams"]],
+        [labels["back"]],
     ]
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def get_offense_video_menu():
+def get_offense_video_menu(language_code: str = "ru"):
+    labels = PLAYER_MENU_LABELS[normalize_language_code(language_code)]
+
     keyboard = [
-        ["Видео: Линейные нападение", "Видео: Принимающие"],
-        ["Видео: Квотербек", "Видео: Бегущие"],
-        ["Назад"],
+        [labels["video_linear_offense"], labels["video_receivers"]],
+        [labels["video_qb"], labels["video_running_backs"]],
+        [labels["back"]],
     ]
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def get_defense_video_menu():
+def get_defense_video_menu(language_code: str = "ru"):
+    labels = PLAYER_MENU_LABELS[normalize_language_code(language_code)]
+
     keyboard = [
-        ["Видео: Линейные защита", "Видео: Лайнбекеры"],
-        ["Видео: Корнеры", "Видео: Сейфти"],
-        ["Назад"],
+        [labels["video_linear_defense"], labels["video_linebackers"]],
+        [labels["video_corners"], labels["video_safeties"]],
+        [labels["back"]],
     ]
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-def get_special_teams_video_menu():
+def get_special_teams_video_menu(language_code: str = "ru"):
+    labels = PLAYER_MENU_LABELS[normalize_language_code(language_code)]
+
     keyboard = [
-        ["Видео: Кикер", "Видео: Лонгснэппер"],
-        ["Видео: Пантер"],
-        ["Назад"],
+        [labels["video_kicker"], labels["video_longsnapper"]],
+        [labels["video_punter"]],
+        [labels["back"]],
     ]
+
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 

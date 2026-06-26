@@ -82,7 +82,121 @@ PLAYER_ACTION_TO_RU_TEXT = {
     "documents": "Документация",
     "bonuses": "Бонусы",
     "training_video": "Обучающее видео",
+
+    "back": "Назад",
+    "offense": "Нападение",
+    "defense": "Защита",
+
+    "ifaf_rules": "Правила игры IFAF 2025",
+    "chrk_regulations": "Регламент ЧРК",
+    "refereeing_guide": "Руководство по судейству",
+
+    "video_offense": "Видео: Нападение",
+    "video_defense": "Видео: Защита",
+    "video_special_teams": "Видео: Спецкоманды",
+    "video_linear_offense": "Видео: Линейные нападение",
+    "video_receivers": "Видео: Принимающие",
+    "video_qb": "Видео: Квотербек",
+    "video_running_backs": "Видео: Бегущие",
+    "video_linear_defense": "Видео: Линейные защита",
+    "video_linebackers": "Видео: Лайнбекеры",
+    "video_corners": "Видео: Корнеры",
+    "video_safeties": "Видео: Сейфти",
+    "video_kicker": "Видео: Кикер",
+    "video_longsnapper": "Видео: Лонгснэппер",
+    "video_punter": "Видео: Пантер",
 }
+
+PLAYER_TEXTS = {
+    "ru": {
+        "back_to_menu": "Возвращаю в меню игрока.",
+        "choose_language": "Выбери язык меню / Мәзір тілін таңда / Choose menu language:",
+        "games_empty": "📅 График игр пока пуст.",
+        "games_title": "🏆 График игр",
+        "trainings_empty": "📅 График тренировок пока пуст.",
+        "trainings_title": "📅 График тренировок",
+        "playbook_title": "📘 Playbook\n\nВыбери раздел:",
+        "documents_title": "📚 Документация\n\nВыбери документ:",
+        "video_title": "🎥 Обучающее видео. Выбери раздел:",
+        "video_links_title": "🎥 Обучающие видео по американскому футболу\n\nВыбери нужный раздел или открой YouTube-канал:",
+        "payment_no_data": "💳 Данные по оплате пока не заполнены.",
+        "payment_title": "💳 Статус оплаты",
+        "paid_yes": "да",
+        "paid_no": "нет",
+        "not_set": "не указано",
+        "paid": "Оплачено",
+        "subscription_until": "Абонемент до",
+        "days_left": "Осталось дней",
+        "bonuses_title": "🎁 Бонусы",
+        "attendance_bonus": "Скидка за посещение всех тренировок",
+        "referral_bonus": "Бесплатный абонемент за приведенного игрока",
+        "prepaid_trainings": "Предоплата тренировок",
+        "received": "получен",
+        "prepaid_until": "оплачено до",
+        "not_added": "скоро будет добавлено.",
+    },
+    "kk": {
+        "back_to_menu": "Ойыншы мәзіріне қайтардым.",
+        "choose_language": "Мәзір тілін таңда:",
+        "games_empty": "📅 Ойындар кестесі әзірге бос.",
+        "games_title": "🏆 Ойындар кестесі",
+        "trainings_empty": "📅 Жаттығу кестесі әзірге бос.",
+        "trainings_title": "📅 Жаттығу кестесі",
+        "playbook_title": "📘 Playbook\n\nБөлімді таңда:",
+        "documents_title": "📚 Құжаттар\n\nҚұжатты таңда:",
+        "video_title": "🎥 Оқу видеолары. Бөлімді таңда:",
+        "video_links_title": "🎥 Америкалық футбол бойынша оқу видеолары\n\nҚажетті бөлімді таңда немесе YouTube арнасын аш:",
+        "payment_no_data": "💳 Төлем туралы деректер әзірге толтырылмаған.",
+        "payment_title": "💳 Төлем мәртебесі",
+        "paid_yes": "иә",
+        "paid_no": "жоқ",
+        "not_set": "көрсетілмеген",
+        "paid": "Төленді",
+        "subscription_until": "Абонемент мерзімі",
+        "days_left": "Қалған күн",
+        "bonuses_title": "🎁 Бонустар",
+        "attendance_bonus": "Барлық жаттығуға қатысқаны үшін жеңілдік",
+        "referral_bonus": "Шақырған ойыншы үшін тегін абонемент",
+        "prepaid_trainings": "Жаттығуларға алдын ала төлем",
+        "received": "алынды",
+        "prepaid_until": "төленген күні",
+        "not_added": "жақында қосылады.",
+    },
+    "en": {
+        "back_to_menu": "Returning to player menu.",
+        "choose_language": "Choose menu language:",
+        "games_empty": "📅 Game schedule is empty.",
+        "games_title": "🏆 Game schedule",
+        "trainings_empty": "📅 Training schedule is empty.",
+        "trainings_title": "📅 Training schedule",
+        "playbook_title": "📘 Playbook\n\nChoose a section:",
+        "documents_title": "📚 Documents\n\nChoose a document:",
+        "video_title": "🎥 Training videos. Choose a section:",
+        "video_links_title": "🎥 American football training videos\n\nChoose a lecture or open the YouTube channel:",
+        "payment_no_data": "💳 Payment data is not filled in yet.",
+        "payment_title": "💳 Payment status",
+        "paid_yes": "yes",
+        "paid_no": "no",
+        "not_set": "not set",
+        "paid": "Paid",
+        "subscription_until": "Subscription until",
+        "days_left": "Days left",
+        "bonuses_title": "🎁 Bonuses",
+        "attendance_bonus": "Discount for attending all practices",
+        "referral_bonus": "Free subscription for inviting a player",
+        "prepaid_trainings": "Training prepayment",
+        "received": "received",
+        "prepaid_until": "paid until",
+        "not_added": "will be added soon.",
+    },
+}
+
+
+def player_text(language_code: str, key: str) -> str:
+    if language_code not in PLAYER_TEXTS:
+        language_code = "ru"
+
+    return PLAYER_TEXTS[language_code].get(key, PLAYER_TEXTS["ru"][key])
 
 
 def get_player_menu_action(text: str) -> str | None:
@@ -269,13 +383,15 @@ def build_player_games_keyboard(schedule) -> list[tuple[str, InlineKeyboardMarku
 
 
 async def show_games_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+
     schedule = get_upcoming_game_schedule()
 
     if not schedule:
-        await update.message.reply_text("📅 График игр пока пуст.")
+        await update.message.reply_text(player_text(language_code, "games_empty"))
         return
 
-    await update.message.reply_text("🏆 График игр")
+    await update.message.reply_text(player_text(language_code, "games_title"))
 
     month_keyboards = build_player_games_keyboard(schedule)
 
@@ -402,13 +518,15 @@ async def show_payment_status(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+
     schedule = get_upcoming_training_schedule()
 
     if not schedule:
-        await update.message.reply_text("📅 График тренировок пока пуст.")
+        await update.message.reply_text(player_text(language_code, "trainings_empty"))
         return
 
-    await update.message.reply_text("📅 График тренировок")
+    await update.message.reply_text(player_text(language_code, "trainings_title"))
 
     month_keyboards = build_player_trainings_keyboard(schedule)
 
@@ -417,9 +535,11 @@ async def show_training_schedule(update: Update, context: ContextTypes.DEFAULT_T
 
 
 async def open_playbook_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+
     await update.message.reply_text(
-        "📘 Playbook\n\nВыбери раздел:",
-        reply_markup=get_playbook_menu()
+        player_text(language_code, "playbook_title"),
+        reply_markup=get_playbook_menu(language_code)
     )
 
 
@@ -449,9 +569,11 @@ async def show_defense_playbook(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def open_documents_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+
     await update.message.reply_text(
-        "📚 Документация\n\nВыбери документ:",
-        reply_markup=get_documents_menu()
+        player_text(language_code, "documents_title"),
+        reply_markup=get_documents_menu(language_code)
     )
 
 
@@ -533,30 +655,41 @@ async def show_bonuses(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def open_video_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+
     await update.message.reply_text(
-        "🎥 Обучающее видео. Выбери раздел:",
-        reply_markup=get_video_menu()
+        player_text(language_code, "video_title"),
+        reply_markup=get_video_menu(language_code)
     )
 
 
 async def open_offense_video_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+    labels = PLAYER_MENU_LABELS[language_code]
+
     await update.message.reply_text(
-        "🎥 Обучающее видео / Нападение",
-        reply_markup=get_offense_video_menu()
+        f"🎥 {labels['training_video']} / {labels['offense']}",
+        reply_markup=get_offense_video_menu(language_code)
     )
 
 
 async def open_defense_video_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+    labels = PLAYER_MENU_LABELS[language_code]
+
     await update.message.reply_text(
-        "🎥 Обучающее видео / Защита",
-        reply_markup=get_defense_video_menu()
+        f"🎥 {labels['training_video']} / {labels['defense']}",
+        reply_markup=get_defense_video_menu(language_code)
     )
 
 
 async def open_special_teams_video_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    language_code = get_player_language(update.effective_user.id)
+    labels = PLAYER_MENU_LABELS[language_code]
+
     await update.message.reply_text(
-        "🎥 Обучающее видео / Спецкоманды",
-        reply_markup=get_special_teams_video_menu()
+        f"🎥 {labels['training_video']} / {labels['video_special_teams'].replace('Видео: ', '')}",
+        reply_markup=get_special_teams_video_menu(language_code)
     )
 
 
@@ -608,7 +741,7 @@ async def back_to_player_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     language_code = get_player_language(update.effective_user.id)
 
     await update.message.reply_text(
-        "Возвращаю в меню игрока.",
+        player_text(language_code, "back_to_menu"),
         reply_markup=get_approved_player_menu(language_code)
     )
 
@@ -623,7 +756,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if player_action == "language":
         await update.message.reply_text(
             "Выбери язык меню / Мәзір тілін таңда / Choose menu language:",
-            reply_markup=get_language_menu()
+            reply_markup=get_language_menu(get_player_language(user.id))
         )
         return
 
@@ -851,9 +984,10 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "Обучающее видео":
+        language_code = get_player_language(update.effective_user.id)
+
         await update.message.reply_text(
-            "🎥 Обучающие видео по американскому футболу\n\n"
-            "Выбери нужный раздел или открой YouTube-канал:",
+            player_text(language_code, "video_links_title"),
             reply_markup=get_training_video_links_keyboard()
         )
         return
