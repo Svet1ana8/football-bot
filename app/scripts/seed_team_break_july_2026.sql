@@ -30,10 +30,10 @@ INSERT INTO public.team_breaks (
 VALUES (
     DATE '2026-07-01',
     DATE '2026-07-19',
-    TIMESTAMP '2026-06-30 10:00:00' AT TIME ZONE 'Asia/Almaty',
+    NOW(),
     '📢 Уведомление от тренера
 
-С завтрашнего дня команда уходит на отдых.
+Сегодня последняя тренировка команды перед отдыхом.
 
 Период отдыха: с 1 по 19 июля включительно.
 
@@ -46,6 +46,7 @@ ON CONFLICT (start_date, end_date)
 DO UPDATE SET
     notify_at = EXCLUDED.notify_at,
     message_text = EXCLUDED.message_text,
-    notified_at = public.team_breaks.notified_at;
-
+    notified_at = NULL,
+    notification_success_count = 0,
+    notification_fail_count = 0;
 COMMIT;
