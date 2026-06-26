@@ -22,9 +22,15 @@ def get_upcoming_game_schedule():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, game_date, game_time, opponent_name, comment, is_active, created_at
+                SELECT
+                    id,
+                    game_date,
+                    game_time,
+                    opponent_name,
+                    comment
                 FROM game_schedule
                 WHERE is_active = TRUE
+                  AND game_date >= (NOW() AT TIME ZONE 'Asia/Almaty')::date
                 ORDER BY game_date, game_time
                 """
             )
