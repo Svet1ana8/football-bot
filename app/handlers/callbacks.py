@@ -48,6 +48,8 @@ from app.repositories.game_schedule import (
     get_upcoming_game_schedule,
 )
 from app.repositories.game_votes import save_game_vote_response
+from app.i18n import t
+from app.repositories.users import get_user_language
 
 
 def get_display_name(
@@ -536,11 +538,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
+        language_code = get_user_language(query.from_user.id)
+
         await context.bot.send_message(
             chat_id=query.from_user.id,
-            text="Тренеру отправлено уведомление о том, что ты оплатил."
+            text=t(language_code, "payment_claim_sent")
         )
-        return
 
     if data.startswith("approve_"):
         if not is_coach(query.from_user.id):
@@ -574,10 +577,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payment_message_sent = False
 
         try:
+            language_code = get_user_language(target_user_id)
+
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text="Тренер одобрил твою заявку. Теперь ты будешь получать уведомления.",
-                reply_markup=get_approved_player_menu()
+                text=t(language_code, "application_approved"),
+                reply_markup=get_approved_player_menu(language_code)
             )
             approval_message_sent = True
         except Exception as e:
@@ -672,9 +677,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if deleted:
             await query.edit_message_text(f"🗑 Игрок {player_name} удалён из базы.")
             try:
+                language_code = get_user_language(target_user_id)
+
                 await context.bot.send_message(
                     chat_id=target_user_id,
-                    text="Ты был удалён из списка игроков. Если нужно, можешь снова подать заявку.",
+                    text=t(language_code, "removed_from_players"),
                     reply_markup=get_player_menu()
                 )
             except Exception:
@@ -700,9 +707,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
+            language_code = get_user_language(target_user_id)
+
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text="Тренер обновил твой тип абонемента: месячный."
+                text=t(language_code, "subscription_type_monthly_updated")
             )
         except Exception:
             pass
@@ -725,9 +734,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
+            language_code = get_user_language(target_user_id)
+
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text="Тренер обновил твой тип абонемента: игровой."
+                text=t(language_code, "subscription_type_game_updated")
             )
         except Exception:
             pass
@@ -762,11 +773,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
+            language_code = get_user_language(target_user_id)
+
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text=(
-                    f"✅ Тренер подтвердил оплату.\n"
-                    f"Твой абонемент продлён до {new_end_date.strftime('%d.%m.%Y')}."
+                text=t(
+                    language_code,
+                    "payment_confirmed",
+                    date=new_end_date.strftime("%d.%m.%Y"),
                 )
             )
         except Exception:
@@ -798,9 +812,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
+            language_code = get_user_language(target_user_id)
+
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text="Тренер пока не подтвердил оплату. Напоминания продолжатся."
+                text=t(language_code, "payment_rejected")
             )
         except Exception as e:
             await context.bot.send_message(
@@ -1118,9 +1134,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ Игрок {player_name} отклонён.")
 
         try:
+            language_code = get_user_language(target_user_id)
+
             await context.bot.send_message(
                 chat_id=target_user_id,
-                text="Твоя заявка была отклонена тренером."
+                text=t(language_code, "application_rejected")
             )
         except Exception:
             await context.bot.send_message(
