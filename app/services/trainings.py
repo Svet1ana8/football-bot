@@ -843,6 +843,24 @@ def build_month_no_response_report_text(
 
     return text
 
+def get_month_name_nominative(month: int) -> str:
+    months = {
+        1: "январь",
+        2: "февраль",
+        3: "март",
+        4: "апрель",
+        5: "май",
+        6: "июнь",
+        7: "июль",
+        8: "август",
+        9: "сентябрь",
+        10: "октябрь",
+        11: "ноябрь",
+        12: "декабрь",
+    }
+
+    return months.get(month, str(month))
+
 
 def build_month_attendance_rating_report_text(report_date: date) -> str:
     """
@@ -859,9 +877,7 @@ def build_month_attendance_rating_report_text(report_date: date) -> str:
         month=report_date.month,
     )
 
-    month_name = get_month_name_prepositional(
-        datetime.combine(report_date, time(12, 0), tzinfo=TIMEZONE)
-    )
+    month_name = get_month_name_nominative(report_date.month)
 
     if not stats:
         return (
