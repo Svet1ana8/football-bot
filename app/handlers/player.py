@@ -33,6 +33,10 @@ from app.handlers.coach import (
     start_add_training_schedule,
     start_delete_game,
     start_delete_training_schedule,
+    start_team_message,
+    handle_team_message_text,
+    confirm_team_message_send,
+    cancel_team_message_send,
 )
 from app.keyboards import (
     get_approved_player_menu,
@@ -782,6 +786,24 @@ async def back_to_player_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
+
+    if is_coach(update.effective_user.id) and context.user_data.get("awaiting_team_message_text"):
+        await handle_team_message_text(update, context)
+        return
+
+    if is_coach(update.effective_user.id) and text == "✅ Отправить команде":
+        await confirm_team_message_send(update, context)
+        return
+
+    if is_coach(update.effective_user.id) and text == "❌ Отменить рассылку":
+        await cancel_team_message_send(update, context)
+        return
+
+    if is_coach(update.effective_user.id) and text == "✉️ Написать команде":
+        reset_coach_temp_state(context)
+        await start_team_message(update, context)
+        return
+
     user = update.effective_user
     existing_user = get_user_by_id(user.id)
 

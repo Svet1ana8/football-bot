@@ -2,7 +2,7 @@ from datetime import datetime, date, time
 import calendar
 import re
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from app.config import TIMEZONE, TRAINING_VOTE_CLOSE_TIME, TRAINING_REMINDER_REPEAT_MINUTES
@@ -496,6 +496,141 @@ async def send_message_to_approved(update: Update, context: ContextTypes.DEFAULT
         f"Рассылка завершена.\n"
         f"Успешно отправлено: {success_count}\n"
         f"Ошибок: {fail_count}"
+    )
+
+def reset_team_message_state(context):
+    context.user_data.pop("awaiting_team_message_text", None)
+    context.user_data.pop("team_message_text", None)
+
+
+def get_team_message_input_menu():
+    return ReplyKeyboardMarkup(
+        [
+            ["❌ Отменить рассылку"],
+            ["Назад"],
+        ],
+        resize_keyboard=True,
+    )
+
+
+def get_team_message_confirm_menu():
+    return ReplyKeyboardMarkup(
+        [
+            ["✅ Отправить команде"],
+            ["❌ Отменить рассылку"],
+        ],
+        resize_keyboard=True,
+    )
+
+
+async def start_team_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    reset_team_message_state(context)
+    context.user_data["awaiting_team_message_text"] = True
+
+    await update.message.reply_text(
+        "Напиши сообщение, которое нужно отправить всем игрокам:",
+        reply_markup=get_team_message_input_menu(),
+    )
+
+
+async def handle_team_message_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    message_text = update.message.text.strip()
+
+    if message_text in ("❌ Отменить рассылку", "Назад"):
+        reset_team_message_state(context)
+        await update.message.reply_text(
+            "Рассылка отменена.",
+            reply_markup=get_coach_menu(),
+        )
+        return
+
+    if not message_text:
+        await update.message.reply_text("Сообщение пустое. Напиши текст рассылки.")
+        return
+
+    context.user_data["awaiting_team_message_text"] = False
+    context.user_data["team_message_text"] = message_text
+
+    await update.message.reply_text(
+        "Предпросмотр сообщения:\n\n"
+        f"📢 Сообщение от тренера\n\n"
+        f"{message_text}\n\n"
+        "Отправить это сообщение всем игрокам?",
+        reply_markup=get_team_message_confirm_menu(),
+    )
+
+
+async def send_team_message_to_players(context: ContextTypes.DEFAULT_TYPE, message_text: str):
+    approved_users = get_users_by_status("approved")
+
+    success_count = 0
+    fail_count = 0
+
+    for user_id, username, first_name in approved_users:
+        if not is_broadcast_recipient(user_id):
+            continue
+
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "📢 Сообщение от тренера\n\n"
+                    f"{message_text}"
+                ),
+            )
+            success_count += 1
+        except Exception as e:
+            print(f"Не удалось отправить сообщение игроку {user_id}: {e}")
+            fail_count += 1
+
+    return success_count, fail_count
+
+
+async def confirm_team_message_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    message_text = context.user_data.get("team_message_text")
+
+    if not message_text:
+        reset_team_message_state(context)
+        await update.message.reply_text(
+            "Нет подготовленного сообщения для рассылки.",
+            reply_markup=get_coach_menu(),
+        )
+        return
+
+    success_count, fail_count = await send_team_message_to_players(context, message_text)
+
+    reset_team_message_state(context)
+
+    await update.message.reply_text(
+        "Рассылка завершена.\n"
+        f"Успешно отправлено: {success_count}\n"
+        f"Ошибок: {fail_count}",
+        reply_markup=get_coach_menu(),
+    )
+
+
+async def cancel_team_message_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_coach(update.effective_user.id):
+        await deny_access(update)
+        return
+
+    reset_team_message_state(context)
+
+    await update.message.reply_text(
+        "Рассылка отменена.",
+        reply_markup=get_coach_menu(),
     )
 
 
