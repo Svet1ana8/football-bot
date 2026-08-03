@@ -21,7 +21,13 @@ TEXTS = {
         "payment_reminder": "Добрый вечер. Напоминаем об оплате абонемента в {month_name}. Пожалуйста, произведите оплату.",
         "new_player_payment": "💳 Оплата абонемента\n\n{name}, после одобрения заявки необходимо оплатить абонемент за текущий месяц.\n\nПосле оплаты нажми кнопку «💸 Оплатил».",
         "final_payment_warning": "Вы не оплатили месячный абонемент в команду по Американскому футболу «ФЕНИКСЫ». Сегодня вы будете удалены из команды.",
-        "removed_from_team_payment": "Вы были удалены из команды.",
+        "removed_from_team_payment": (
+            "Вы были удалены из команды из-за отсутствия оплаты.\n\n"
+            "Чтобы вступить в бот повторно:\n"
+            "1. Удали чат с ботом.\n"
+            "2. Заново перейди по ссылке приглашения в бот.\n"
+            "3. Повторно отправь заявку тренеру."
+        ),
         "payment_subscription_overdue": "Добрый день, {name}. Напоминаем, что срок действия вашего абонемента уже истёк. Просрочка: {overdue_days} {days_word}. Пожалуйста, оплатите продление.",
         "player_default_name": "игрок",
         "days_1": "день",
@@ -50,7 +56,13 @@ TEXTS = {
         "payment_reminder": "Қайырлы кеш. {month_name} айындағы абонемент төлемін еске саламыз. Төлем жасауыңызды сұраймыз.",
         "new_player_payment": "💳 Абонемент төлемі\n\n{name}, өтінім мақұлданғаннан кейін ағымдағы ай үшін абонемент төлемін жасау қажет.\n\nТөлем жасағаннан кейін «💸 Оплатил» батырмасын бас.",
         "final_payment_warning": "Сіз «ФЕНИКСЫ» америкалық футбол командасына айлық абонемент төлемін жасаған жоқсыз. Бүгін сіз командадан шығарыласыз.",
-        "removed_from_team_payment": "Сіз командадан шығарылдыңыз.",
+        "removed_from_team_payment": (
+            "Төлем болмағандықтан сіз командадан шығарылдыңыз.\n\n"
+            "Ботқа қайта қосылу үшін:\n"
+            "1. Ботпен чатты өшіріңіз.\n"
+            "2. Ботқа шақыру сілтемесі арқылы қайта кіріңіз.\n"
+            "3. Жаттықтырушыға өтінімді қайта жіберіңіз."
+        ),
         "payment_subscription_overdue": "Қайырлы күн, {name}. Сіздің абонемент мерзіміңіз аяқталғанын еске саламыз. Кешігу: {overdue_days} {days_word}. Ұзарту үшін төлем жасауыңызды сұраймыз.",
         "player_default_name": "ойыншы",
         "days_1": "күн",
@@ -79,7 +91,13 @@ TEXTS = {
         "payment_reminder": "Good evening. This is a reminder to pay your subscription for {month_name}. Please make the payment.",
         "new_player_payment": "💳 Subscription payment\n\n{name}, after your application is approved, you need to pay the subscription for the current month.\n\nAfter payment, press the «💸 Оплатил» button.",
         "final_payment_warning": "You have not paid the monthly subscription for the PHOENIX American football team. Today you will be removed from the team.",
-        "removed_from_team_payment": "You have been removed from the team.",
+        "removed_from_team_payment": (
+            "You have been removed from the team due to missing payment.\n\n"
+            "To join the bot again:\n"
+            "1. Delete the chat with the bot.\n"
+            "2. Open the bot again using the invitation link.\n"
+            "3. Send a new request to the coach."
+        ),
         "payment_subscription_overdue": "Good day, {name}. Your subscription has already expired. Overdue: {overdue_days} {days_word}. Please pay for the renewal.",
         "player_default_name": "player",
         "days_1": "day",
