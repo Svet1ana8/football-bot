@@ -183,6 +183,49 @@ REQUEST_SENT_TEXT = (
     "Тренер рассмотрит заявку и подтвердит доступ к команде."
 )
 
+PLAYER_MAIN_MENU_TEXTS = {
+    "ru": (
+        "🏈 Меню игрока\n\n"
+        "Выбери нужный раздел:\n\n"
+        "👤 Мой статус — информация о твоей заявке\n"
+        "💳 Статус оплаты — абонемент и оплата\n"
+        "📅 График тренировок — ближайшие тренировки\n"
+        "🏆 График игр — матчи команды\n"
+        "📚 Playbook — игровые материалы\n"
+        "🎥 Обучающее видео — видео для подготовки\n"
+        "🌐 Язык — сменить язык меню"
+    ),
+    "kk": (
+        "🏈 Ойыншы мәзірі\n\n"
+        "Қажет бөлімді таңда:\n\n"
+        "👤 Менің статусым — өтінім туралы ақпарат\n"
+        "💳 Төлем статусы — абонемент және төлем\n"
+        "📅 Жаттығу кестесі — алдағы жаттығулар\n"
+        "🏆 Ойындар кестесі — команда ойындары\n"
+        "📚 Playbook — ойын материалдары\n"
+        "🎥 Оқу видеолары — дайындық видеолары\n"
+        "🌐 Тіл — мәзір тілін өзгерту"
+    ),
+    "en": (
+        "🏈 Player menu\n\n"
+        "Choose a section:\n\n"
+        "👤 My status — your application info\n"
+        "💳 Payment status — subscription and payment\n"
+        "📅 Training schedule — upcoming trainings\n"
+        "🏆 Game schedule — team games\n"
+        "📚 Playbook — team materials\n"
+        "🎥 Training video — videos for preparation\n"
+        "🌐 Language — change menu language"
+    ),
+}
+
+
+def get_player_main_menu_text(language_code: str | None) -> str:
+    if language_code not in PLAYER_MAIN_MENU_TEXTS:
+        language_code = "ru"
+
+    return PLAYER_MAIN_MENU_TEXTS[language_code]
+
 PLAYER_TEXTS = {
     "ru": {
         "back_to_menu": "Возвращаю в меню игрока.",
@@ -851,7 +894,7 @@ async def back_to_player_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     language_code = get_player_language(update.effective_user.id)
 
     await update.message.reply_text(
-        player_text(language_code, "back_to_menu"),
+        get_player_main_menu_text(language_code),
         reply_markup=get_approved_player_menu(language_code)
     )
 
@@ -893,7 +936,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_user_language(user.id, language_code)
 
         await update.message.reply_text(
-            LANGUAGE_SELECTED_TEXT[language_code],
+            f"{LANGUAGE_SELECTED_TEXT[language_code]}\n\n{get_player_main_menu_text(language_code)}",
             reply_markup=get_approved_player_menu(language_code)
         )
         return
