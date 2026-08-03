@@ -5,6 +5,31 @@ from app.config import COACH_IDS
 from app.repositories.users import get_user_by_id, get_users_by_status
 
 
+def build_coach_new_request_text(user_id: int, username: str | None, full_name: str) -> str:
+    username_text = f"@{username}" if username else "не указан"
+
+    return (
+        "📩 Новая заявка в команду\n\n"
+        f"👤 Игрок: {full_name}\n"
+        f"🆔 ID: {user_id}\n"
+        f"🔗 Username: {username_text}\n"
+        "📌 Статус: ожидает решения\n\n"
+        "Выбери действие:"
+    )
+
+def build_coach_new_request_text(user_id: int, username: str | None, full_name: str) -> str:
+    username_text = f"@{username}" if username else "не указан"
+
+    return (
+        "📩 Новая заявка в команду\n\n"
+        f"👤 Игрок: {full_name}\n"
+        f"🆔 ID: {user_id}\n"
+        f"🔗 Username: {username_text}\n"
+        "📌 Статус: ожидает решения\n\n"
+        "Выбери действие:"
+    )
+
+
 async def notify_coaches_about_request(context: ContextTypes.DEFAULT_TYPE, user_id: int):
     if not COACH_IDS:
         return
@@ -16,14 +41,11 @@ async def notify_coaches_about_request(context: ContextTypes.DEFAULT_TYPE, user_
     request_user_id, username, first_name, status = existing_user
 
     player_name = first_name or str(request_user_id)
-    username_text = f"@{username}" if username else "не указан"
 
-    text = (
-        "📩 Новая заявка\n\n"
-        f"👤 Игрок: {player_name}\n"
-        f"🆔 ID: {request_user_id}\n"
-        f"🔗 Username: {username_text}\n"
-        f"📌 Статус: {status}"
+    text = build_coach_new_request_text(
+        user_id=request_user_id,
+        username=username,
+        full_name=player_name,
     )
 
     keyboard = [[
