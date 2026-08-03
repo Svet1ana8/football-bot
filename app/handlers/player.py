@@ -111,6 +111,51 @@ PLAYER_ACTION_TO_RU_TEXT = {
     "video_punter": "Видео: Пантер",
 }
 
+INVALID_NAME_TEXTS = set(PLAYER_ACTION_TO_RU_TEXT.keys()) | set(PLAYER_ACTION_TO_RU_TEXT.values()) | {
+    "Назад",
+    "✅ Одобрить",
+    "❌ Отклонить",
+    "Новые заявки",
+    "Одобренные игроки",
+    "Напомнить об оплате",
+    "Напомнить о тренировке",
+    "Ответы на голосование",
+    "Статус напоминания",
+    "Посещаемость",
+    "Календарь тренировок",
+    "Календарь игр",
+    "Оплаты",
+    "Обновить меню игрокам",
+    "Обновить меню",
+    "✉️ Написать команде",
+}
+
+
+def is_valid_player_full_name(text: str) -> bool:
+    text = text.strip()
+
+    if text in INVALID_NAME_TEXTS:
+        return False
+
+    if len(text) < 5:
+        return False
+
+    parts = text.split()
+
+    if len(parts) < 2:
+        return False
+
+    for part in parts:
+        clean_part = part.replace("-", "")
+
+        if len(clean_part) < 2:
+            return False
+
+        if not clean_part.isalpha():
+            return False
+
+    return True
+
 PLAYER_TEXTS = {
     "ru": {
         "back_to_menu": "Возвращаю в меню игрока.",
@@ -950,12 +995,13 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if existing_user and existing_user[3] == "awaiting_name":
-        full_name = text
+        full_name = text.strip()
 
-        if len(full_name.split()) < 2:
+        if not is_valid_player_full_name(full_name):
             await update.message.reply_text(
-                "Пожалуйста, напиши имя и фамилию полностью.\n\n"
-                "Например: Иванов Иван"
+                "Пожалуйста, напиши фамилию и имя полностью текстом.\n\n"
+                "Например: Иванов Иван\n\n"
+                "Кнопки меню сюда вводить нельзя."
             )
             return
 
