@@ -1,7 +1,7 @@
 from datetime import date
 from pathlib import Path
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, Update
 from telegram.ext import ContextTypes
 
 from app.handlers.common import deny_access
@@ -155,6 +155,33 @@ def is_valid_player_full_name(text: str) -> bool:
             return False
 
     return True
+
+WELCOME_NEW_PLAYER_TEXT = (
+    "🏈 Добро пожаловать в бот команды Almaty Phoenix!\n\n"
+    "Здесь ты сможешь:\n"
+    "• смотреть график тренировок и игр;\n"
+    "• отвечать на голосования;\n"
+    "• отслеживать статус оплаты;\n"
+    "• получать материалы команды.\n\n"
+    "Чтобы отправить заявку тренеру, напиши свои Фамилию и Имя текстом.\n\n"
+    "Пример:\n"
+    "Иванов Иван"
+)
+
+
+INVALID_FULL_NAME_TEXT = (
+    "⚠️ Не получилось сохранить имя.\n\n"
+    "Пожалуйста, напиши свои Фамилию и Имя обычным текстом.\n\n"
+    "Пример:\n"
+    "Иванов Иван"
+)
+
+
+REQUEST_SENT_TEXT = (
+    "✅ Заявка отправлена тренеру\n\n"
+    "👤 Игрок: {full_name}\n\n"
+    "Тренер рассмотрит заявку и подтвердит доступ к команде."
+)
 
 PLAYER_TEXTS = {
     "ru": {
@@ -998,11 +1025,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         full_name = text.strip()
 
         if not is_valid_player_full_name(full_name):
-            await update.message.reply_text(
-                "Пожалуйста, напиши фамилию и имя полностью текстом.\n\n"
-                "Например: Иванов Иван\n\n"
-                "Кнопки меню сюда вводить нельзя."
-            )
+            await update.message.reply_text(INVALID_FULL_NAME_TEXT)
             return
 
         add_or_update_user(
@@ -1013,8 +1036,7 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text(
-            f"✅ Заявка отправлена тренеру.\n\n"
-            f"Имя: {full_name}"
+            REQUEST_SENT_TEXT.format(full_name=full_name)
         )
         await notify_coaches_about_request(context, user.id)
         return
@@ -1032,8 +1054,8 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await update.message.reply_text(
-            "Напиши своё имя и фамилию.\n\n"
-            "Например: Иванов Иван"
+            WELCOME_NEW_PLAYER_TEXT,
+            reply_markup=ReplyKeyboardRemove()
         )
         return
 
