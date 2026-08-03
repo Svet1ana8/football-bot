@@ -76,6 +76,24 @@ LANGUAGE_SELECTED_TEXT = {
     "en": "✅ Menu language changed to English.",
 }
 
+COACH_MENU_ALIASES = {
+    "📩 Новые заявки": "Новые заявки",
+    "✅ Одобренные игроки": "Одобренные игроки",
+    "💳 Напомнить об оплате": "Напомнить об оплате",
+    "🏋️ Напомнить о тренировке": "Напомнить о тренировке",
+    "🗳 Ответы на голосование": "Ответы на голосование",
+    "📋 Статус напоминания": "Статус напоминания",
+    "📊 Посещаемость": "Посещаемость",
+    "📅 Календарь тренировок": "Календарь тренировок",
+    "🏆 Календарь игр": "Календарь игр",
+    "💰 Оплаты": "Оплаты",
+    "🔄 Обновить меню игрокам": "Обновить меню игрокам",
+    "🏠 Обновить меню": "Обновить меню",
+}
+
+
+def normalize_coach_menu_text(text: str) -> str:
+    return COACH_MENU_ALIASES.get(text, text)
 
 PLAYER_ACTION_TO_RU_TEXT = {
     "my_status": "Мой статус",
@@ -918,6 +936,9 @@ async def menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reset_coach_temp_state(context)
         await start_team_message(update, context)
         return
+
+    if is_coach(update.effective_user.id):
+        text = normalize_coach_menu_text(text)
 
     user = update.effective_user
     existing_user = get_user_by_id(user.id)
