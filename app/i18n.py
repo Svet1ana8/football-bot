@@ -1,7 +1,17 @@
 TEXTS = {
     "ru": {
         "payment_claim_sent": "Тренеру отправлено уведомление о том, что ты оплатил.",
-        "application_approved": "Тренер одобрил твою заявку. Теперь ты будешь получать уведомления.",
+        "application_approved": (
+            "✅ Заявка одобрена\n\n"
+            "Добро пожаловать в команду Almaty Phoenix!\n\n"
+            "Теперь тебе доступно меню игрока:\n"
+            "🏋️ Тренировки\n"
+            "🏆 Игры\n"
+            "💳 Оплата\n"
+            "📚 Playbook\n"
+            "🎥 Обучающие видео\n\n"
+            "Выбери нужный раздел в меню ниже."
+        ),
         "application_rejected": "Твоя заявка была отклонена тренером.",
         "removed_from_players": "Ты был удалён из списка игроков. Если нужно, можешь снова подать заявку.",
         "subscription_type_monthly_updated": "Тренер обновил твой тип абонемента: месячный.",
@@ -36,7 +46,17 @@ TEXTS = {
     },
     "kk": {
         "payment_claim_sent": "Жаттықтырушыға сенің төлем жасағаның туралы хабарлама жіберілді.",
-        "application_approved": "Жаттықтырушы сенің өтініміңді мақұлдады. Енді сен хабарламалар алып тұрасың.",
+        "application_approved": (
+            "✅ Өтінім мақұлданды\n\n"
+            "Almaty Phoenix командасына қош келдің!\n\n"
+            "Енді саған ойыншы мәзірі қолжетімді:\n"
+            "🏋️ Жаттығулар\n"
+            "🏆 Ойындар\n"
+            "💳 Төлем\n"
+            "📚 Playbook\n"
+            "🎥 Оқу видеолары\n\n"
+            "Төмендегі мәзірден қажет бөлімді таңда."
+        ),
         "application_rejected": "Сенің өтініміңді жаттықтырушы қабылдамады.",
         "removed_from_players": "Сен ойыншылар тізімінен өшірілдің. Қажет болса, қайта өтінім бере аласың.",
         "subscription_type_monthly_updated": "Жаттықтырушы сенің абонемент түріңді жаңартты: айлық.",
@@ -71,7 +91,17 @@ TEXTS = {
     },
     "en": {
         "payment_claim_sent": "The coach has been notified that you paid.",
-        "application_approved": "The coach approved your application. You will now receive notifications.",
+        "application_approved": (
+            "✅ Application approved\n\n"
+            "Welcome to the Almaty Phoenix team!\n\n"
+            "You now have access to the player menu:\n"
+            "🏋️ Trainings\n"
+            "🏆 Games\n"
+            "💳 Payment\n"
+            "📚 Playbook\n"
+            "🎥 Training videos\n\n"
+            "Choose a section from the menu below."
+        ),
         "application_rejected": "Your application was rejected by the coach.",
         "removed_from_players": "You were removed from the players list. You can apply again if needed.",
         "subscription_type_monthly_updated": "The coach updated your subscription type: monthly.",
