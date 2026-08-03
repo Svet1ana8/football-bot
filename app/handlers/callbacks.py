@@ -501,6 +501,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "payment_claimed":
+        existing_user = get_user_by_id(query.from_user.id)
+
+        if not existing_user or existing_user[3] != "approved":
+            await query.answer(
+                "Оплата недоступна. Вы не числитесь в активном составе команды.",
+                show_alert=True
+            )
+
+            try:
+                await query.edit_message_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+
+            await context.bot.send_message(
+                chat_id=query.from_user.id,
+                text=(
+                    "Ты сейчас не числишься в активном составе команды.\n\n"
+                    "Если хочешь вернуться, удали чат с ботом и заново перейди по ссылке приглашения."
+                )
+            )
+            return
+
         mark_payment_claimed(query.from_user.id, True)
         add_payment_history(
             user_id=query.from_user.id,
@@ -544,6 +566,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=query.from_user.id,
             text=t(language_code, "payment_claim_sent")
         )
+        return
 
     if data.startswith("approve_"):
         if not is_coach(query.from_user.id):
@@ -756,6 +779,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_user_id = int(data.split("_")[2])
         target_user = get_user_by_id(target_user_id)
         player_name = target_user[2] if target_user and target_user[2] else str(target_user_id)
+
+        if not target_user or target_user[3] != "approved":
+            await query.answer(
+                "Нельзя подтвердить оплату: игрок не в активном составе.",
+                show_alert=True
+            )
+
+            await query.edit_message_text(
+                "⚠️ Оплата не подтверждена.\n\n"
+                f"Игрок {player_name} не числится в активном составе команды.\n"
+                "Сначала игрок должен заново подать заявку и быть одобрен тренером."
+            )
+            return
 
         today = datetime.now(TIMEZONE).date()
 
