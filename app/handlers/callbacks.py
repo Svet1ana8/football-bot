@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 import calendar
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 
 from app.config import COACH_IDS, TIMEZONE
@@ -51,6 +51,62 @@ from app.repositories.game_votes import save_game_vote_response
 from app.i18n import t
 from app.repositories.users import get_user_language
 
+
+PLAYER_PROTECTED_CALLBACK_PREFIXES = (
+    "training_yes_",
+    "training_no_",
+    "change_training_answer_",
+    "confirm_change_training_answer_",
+    "game_vote_yes_",
+    "game_vote_no_",
+    "game_player_view_",
+)
+
+PLAYER_PROTECTED_CALLBACKS = {
+    "payment_claimed",
+}
+
+
+def is_protected_player_callback(data: str) -> bool:
+    return (
+        data in PLAYER_PROTECTED_CALLBACKS
+        or data.startswith(PLAYER_PROTECTED_CALLBACK_PREFIXES)
+    )
+
+
+async def block_non_approved_player_callback(query, context, data: str) -> bool:
+    if not is_protected_player_callback(data):
+        return False
+
+    if is_coach(query.from_user.id):
+        return False
+
+    existing_user = get_user_by_id(query.from_user.id)
+
+    if existing_user and existing_user[3] == "approved":
+        return False
+
+    await query.answer(
+        "Действие недоступно. Вы не числитесь в активном составе команды.",
+        show_alert=True
+    )
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    await context.bot.send_message(
+        chat_id=query.from_user.id,
+        text=(
+            "Ты сейчас не числишься в активном составе команды.\n\n"
+            "Старые кнопки больше не работают.\n\n"
+            "Если хочешь вернуться, удали чат с ботом и заново перейди по ссылке приглашения."
+        ),
+        reply_markup=ReplyKeyboardRemove()
+    )
+
+    return True
 
 def get_display_name(
     user_id: int,
@@ -298,11 +354,15 @@ def build_cancelled_training_start_time(training_date: date, training_time):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
 
     user = query.from_user
     user_id = user.id
     data = query.data
+
+    if await block_non_approved_player_callback(query, context, data):
+        return
+
+    await query.answer()
 
     if data == "send_request":
         existing_user = get_user_by_id(user_id)
