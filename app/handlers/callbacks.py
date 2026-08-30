@@ -1152,7 +1152,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             data.replace("training_add_date_", "", 1),
             "%Y-%m-%d"
         ).date()
-        training_time = datetime.strptime("21:00", "%H:%M").time()
+        training_time = datetime.strptime("19:00", "%H:%M").time()
 
         add_training_schedule(
             training_date=selected_date,

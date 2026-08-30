@@ -1140,7 +1140,7 @@ async def handle_training_schedule_add_input(update: Update, context: ContextTyp
             "Используй:\n"
             "ДД.ММ.ГГГГ ЧЧ:ММ\n\n"
             "Например:\n"
-            "25.05.2026 21:00"
+            "25.05.2026 19:00"
         )
         return
 

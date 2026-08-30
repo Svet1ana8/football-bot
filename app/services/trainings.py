@@ -34,12 +34,12 @@ from app.utils.dates import get_month_name_prepositional
 
 
 # День ДО стандартной тренировки:
-# Воскресенье / Вторник / Четверг.
-TRAINING_VOTE_WEEKDAYS = {6, 1, 3}
+# Понедельник / Среда.
+TRAINING_VOTE_WEEKDAYS = {0, 2}
 
 # Стандартные дни тренировок:
-# Понедельник / Среда / Пятница.
-TRAINING_DAYS = {0, 2, 4}
+# Вторник / Четверг.
+TRAINING_DAYS = {1, 3}
 
 # Авто-напоминания за день до стандартной тренировки:
 # с 09:00 до 23:00 каждый час.
@@ -405,7 +405,7 @@ def stop_cancelled_training_if_needed(training, source: str) -> bool:
 
 def parse_training_time() -> time:
     """
-    TRAINING_TIME обычно строка вида '21:00'.
+    TRAINING_TIME обычно строка вида '19:00'.
     Поддерживаем также datetime.time.
     """
     if isinstance(TRAINING_TIME, time):
@@ -441,9 +441,8 @@ def get_today_stop_at() -> datetime:
 def get_next_training_datetime_from_vote_day(now: datetime) -> datetime:
     """
     Для стандартного расписания:
-    Вс -> Пн
-    Вт -> Ср
-    Чт -> Пт
+    Пн -> Вт
+    Ср -> Чт
     """
     training_date = now.date() + timedelta(days=1)
     return datetime.combine(training_date, parse_training_time(), tzinfo=TIMEZONE)
@@ -454,7 +453,7 @@ def get_next_or_today_training_datetime(now: datetime) -> datetime:
     Для ручной кнопки тренера, если активной тренировки нет:
     - если сегодня стандартный день тренировки, берём сегодня;
     - если сегодня день предварительного голосования, берём завтра;
-    - иначе берём ближайший Пн/Ср/Пт.
+    - иначе берём ближайший Вт/Чт.
     """
     training_time = parse_training_time()
 
