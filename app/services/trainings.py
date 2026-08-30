@@ -49,16 +49,16 @@ AUTO_REMINDER_REPEAT_MINUTES = 60
 
 # В день тренировки:
 # тем, кто не ответил на первичное голосование,
-# напоминаем каждый час с 09:00 до 17:30.
+# напоминаем каждый час с 09:00 до 15:30.
 TRAINING_DAY_NO_RESPONSE_START_TIME = time(9, 0)
-TRAINING_DAY_NO_RESPONSE_END_TIME = time(17, 30)
+TRAINING_DAY_NO_RESPONSE_END_TIME = time(15, 30)
 TRAINING_DAY_NO_RESPONSE_REPEAT_MINUTES = 60
 
 # Контрольное подтверждение в день тренировки:
-# окно 18:00–18:59, чтобы не пропустить,
-# если бот/сервер проснулся не ровно в 18:00.
-TRAINING_CONFIRMATION_START_TIME = time(18, 0)
-TRAINING_CONFIRMATION_END_TIME = time(18, 59)
+# окно 16:00–16:59, чтобы не пропустить,
+# если бот/сервер проснулся не ровно в 16:00.
+TRAINING_CONFIRMATION_START_TIME = time(16, 0)
+TRAINING_CONFIRMATION_END_TIME = time(16, 59)
 
 # Авто-отчёт тренеру в день тренировки:
 # окно 19:00–19:59, чтобы не пропустить,
@@ -497,7 +497,7 @@ def is_within_auto_reminder_window(now: datetime) -> bool:
 def is_within_training_day_no_response_window(now: datetime) -> bool:
     """
     В день тренировки напоминаем тем, кто не ответил,
-    с 09:00 до 17:30.
+    с 09:00 до 15:30.
 
     Работает не по дню недели, а по start_time активной тренировки.
     Поэтому поддерживает и стандартные тренировки, и нестандартные.
@@ -600,7 +600,7 @@ def was_training_day_no_response_reminder_sent_recently(
 
     Это отдельное поле, чтобы не конфликтовать с:
     - last_reminder_time для авто-напоминаний за день до тренировки;
-    - last_confirmation_time для контрольного подтверждения в 18:00;
+    - last_confirmation_time для контрольного подтверждения в 16:00;
     - last_coach_report_time для авто-отчёта тренеру;
     - ручной кнопкой тренера.
     """
@@ -1206,12 +1206,12 @@ async def send_training_day_no_response_reminder(context: ContextTypes.DEFAULT_T
 
     Правило:
     - только в день активной тренировки;
-    - с 09:00 до 17:30;
+    - с 09:00 до 15:30;
     - каждый час;
     - только approved игрокам;
     - только тем, у кого нет ответа в training_responses;
     - не конфликтует с авто-напоминаниями за день до тренировки;
-    - не конфликтует с контрольным подтверждением в 18:00;
+    - не конфликтует с контрольным подтверждением в 16:00;
     - не конфликтует с авто-отчётом тренеру в 19:00;
     - не трогает ручную кнопку тренера.
     """
@@ -1744,7 +1744,7 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
        авто-напоминание всем approved игрокам с 09:00 до 23:00 каждый час.
 
     2. В день тренировки:
-       напоминание тем, кто не ответил, с 09:00 до 17:30 каждый час.
+       напоминание тем, кто не ответил, с 09:00 до 15:30 каждый час.
 
     3. В день тренировки:
        авто-отчёт тренеру с итогами в 19:00–19:59.
@@ -1967,8 +1967,8 @@ def schedule_training_evening_confirmation_job(application):
     if existing_jobs:
         return
 
-    # Не run_daily ровно в 18:00, а проверка каждые 5 минут.
-    # Поэтому если бот проснулся в 18:13, контрольное всё равно уйдёт.
+    # Не run_daily ровно в 16:00, а проверка каждые 5 минут.
+    # Поэтому если бот проснулся в 16:13, контрольное всё равно уйдёт.
     application.job_queue.run_repeating(
         evening_training_confirmation_job,
         interval=timedelta(minutes=5),
