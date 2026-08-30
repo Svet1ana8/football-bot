@@ -61,10 +61,10 @@ TRAINING_CONFIRMATION_START_TIME = time(16, 0)
 TRAINING_CONFIRMATION_END_TIME = time(16, 59)
 
 # Авто-отчёт тренеру в день тренировки:
-# окно 19:00–19:59, чтобы не пропустить,
-# если бот/сервер проснулся не ровно в 19:00.
-TRAINING_COACH_REPORT_START_TIME = time(19, 0)
-TRAINING_COACH_REPORT_END_TIME = time(19, 59)
+# окно 17:00–17:59, чтобы не пропустить,
+# если бот/сервер проснулся не ровно в 17:00.
+TRAINING_COACH_REPORT_START_TIME = time(17, 0)
+TRAINING_COACH_REPORT_END_TIME = time(17, 59)
 
 # Отчёт тренеру по игрокам, которые часто не отвечают.
 # Проверка идёт каждые 5 минут через training_repeat_job,
@@ -516,7 +516,7 @@ def is_within_confirmation_window(now: datetime) -> bool:
 def is_within_coach_report_window(now: datetime) -> bool:
     """
     Авто-отчёт тренеру отправляется в день тренировки
-    в окне 19:00–19:59.
+    в окне 17:00–17:59.
     """
     return TRAINING_COACH_REPORT_START_TIME <= now.time() <= TRAINING_COACH_REPORT_END_TIME
 
@@ -1212,7 +1212,7 @@ async def send_training_day_no_response_reminder(context: ContextTypes.DEFAULT_T
     - только тем, у кого нет ответа в training_responses;
     - не конфликтует с авто-напоминаниями за день до тренировки;
     - не конфликтует с контрольным подтверждением в 16:00;
-    - не конфликтует с авто-отчётом тренеру в 19:00;
+    - не конфликтует с авто-отчётом тренеру в 17:00;
     - не трогает ручную кнопку тренера.
     """
     now = datetime.now(TIMEZONE)
@@ -1311,7 +1311,7 @@ async def send_coach_training_report(context: ContextTypes.DEFAULT_TYPE):
 
     Правило:
     - только в день активной тренировки;
-    - только в окне 19:00–19:59;
+    - только в окне 17:00–17:59;
     - только один раз в день на конкретную тренировку;
     - игрокам ничего не отправляет;
     - старые голосования и ответы не трогает.
@@ -1747,7 +1747,7 @@ async def repeat_training_reminder_job(context: ContextTypes.DEFAULT_TYPE):
        напоминание тем, кто не ответил, с 09:00 до 15:30 каждый час.
 
     3. В день тренировки:
-       авто-отчёт тренеру с итогами в 19:00–19:59.
+       авто-отчёт тренеру с итогами в 17:00–17:59.
 
     4. 15 числа и 30 числа / последний день короткого месяца:
        отчёт тренеру по игрокам, которые часто не отвечают.
