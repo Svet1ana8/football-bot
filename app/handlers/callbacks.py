@@ -863,7 +863,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_payment_history(
             user_id=target_user_id,
             action="confirmed",
-            comment=f"Тренер подтвердил оплату. Абонемент продлён до {new_end_date.strftime('%d.%m.%Y')}"
+            comment=f"Тренер подтвердил оплату. Абонемент продлён до {new_end_date.strftime('%d.%m.%Y')}",
+            payment_period=new_end_date.replace(day=1),
         )
 
         await query.edit_message_text(

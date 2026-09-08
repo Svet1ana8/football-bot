@@ -35,6 +35,7 @@ from app.repositories.payments import (
     get_unpaid_subscriptions,
     get_unpaid_subscriptions_with_users,
     set_subscription_type,
+    get_confirmed_payment_history_for_month,
 )
 from app.repositories.training_schedule import (
     add_training_schedule,
@@ -61,6 +62,23 @@ from app.services.trainings import (
     start_training_reminder,
 )
 
+def get_month_name_nominative(month: int) -> str:
+    months = {
+        1: "январь",
+        2: "февраль",
+        3: "март",
+        4: "апрель",
+        5: "май",
+        6: "июнь",
+        7: "июль",
+        8: "август",
+        9: "сентябрь",
+        10: "октябрь",
+        11: "ноябрь",
+        12: "декабрь",
+    }
+
+    return months.get(month, str(month))
 
 def reset_game_add_state(context: ContextTypes.DEFAULT_TYPE):
     """
@@ -1424,6 +1442,50 @@ async def show_payment_history(update: Update, context: ContextTypes.DEFAULT_TYP
     if not is_coach(update.effective_user.id):
         await deny_access(update)
         return
+
+    now = datetime.now(TIMEZONE)
+    month_name = get_month_name_nominative(now.month)
+
+    history = get_confirmed_payment_history_for_month(
+        year=now.year,
+        month=now.month,
+    )
+
+    if not history:
+        await update.message.reply_text(
+            f"🧾 История оплат за {month_name} {now.year}\n\n"
+            "Подтверждённых оплат за этот месяц пока нет."
+        )
+        return
+
+    text = f"🧾 История оплат за {month_name} {now.year}\n\n"
+
+    for index, (
+        history_id,
+        user_id,
+        username,
+        first_name,
+        created_at,
+        comment,
+    ) in enumerate(history, start=1):
+        name = first_name or str(user_id)
+
+        if username:
+            name += f" (@{username})"
+
+        if created_at:
+            created_text = created_at.astimezone(TIMEZONE).strftime("%d.%m.%Y %H:%M")
+        else:
+            created_text = "не указано"
+
+        text += (
+            f"{index}. 👤 {name}\n"
+            f"✅ Оплата подтверждена\n"
+            f"📅 Дата подтверждения: {created_text}\n"
+            f"📝 {comment or 'Комментарий не указан'}\n\n"
+        )
+
+    await send_long_message_by_update(update, text)
 
     history = get_all_payment_history(limit=30)
 

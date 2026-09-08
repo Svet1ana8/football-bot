@@ -442,14 +442,47 @@ def reject_claimed_payment(user_id: int):
         conn.commit()
 
 
-def add_payment_history(user_id: int, action: str, comment: str | None = None):
+def add_payment_history(
+    user_id: int,
+    action: str,
+    comment: str | None = None,
+    payment_period: date | None = None,
+):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO payment_history (user_id, action, comment)
-                VALUES (%s, %s, %s)
-            """, (user_id, action, comment))
+                INSERT INTO payment_history (
+                    user_id,
+                    action,
+                    comment,
+                    payment_period
+                )
+                VALUES (%s, %s, %s, %s)
+            """, (user_id, action, comment, payment_period))
         conn.commit()
+
+def get_confirmed_payment_history_for_month(year: int, month: int):
+    payment_period = date(year, month, 1)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    ph.id,
+                    ph.user_id,
+                    u.username,
+                    u.first_name,
+                    ph.created_at,
+                    ph.comment
+                FROM payment_history ph
+                LEFT JOIN users u
+                    ON u.user_id = ph.user_id
+                WHERE ph.action = 'confirmed'
+                  AND ph.payment_period = %s
+                ORDER BY u.first_name NULLS LAST, ph.created_at DESC
+            """, (payment_period,))
+
+            return cur.fetchall()
 
 
 def get_payment_history_by_user(user_id: int):
