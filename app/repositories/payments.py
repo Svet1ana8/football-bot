@@ -1,6 +1,7 @@
+import calendar
 from datetime import date, timedelta
 
-from app.config import DEFAULT_PAYMENT_DAY
+from app.config import DEFAULT_PAYMENT_DAY, SUBSCRIPTION_END_REMINDER_DAYS
 from app.db import get_connection
 
 
@@ -18,7 +19,15 @@ def get_initial_subscription_end_date(today: date, payment_day: int = 28) -> dat
     return date(year, month, payment_day)
 
 
-def _get_next_subscription_end_date(today: date, payment_day: int = 28) -> date:
+def _safe_subscription_end_date(year: int, month: int, payment_day: int) -> date:
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(payment_day, last_day))
+
+
+def _get_current_subscription_end_date(today: date, payment_day: int = 28) -> date:
+    if today.day <= payment_day:
+        return _safe_subscription_end_date(today.year, today.month, payment_day)
+
     year = today.year
     month = today.month + 1
 
@@ -26,7 +35,18 @@ def _get_next_subscription_end_date(today: date, payment_day: int = 28) -> date:
         month = 1
         year += 1
 
-    return date(year, month, payment_day)
+    return _safe_subscription_end_date(year, month, payment_day)
+
+
+def _get_next_subscription_end_date(current_end_date: date, payment_day: int = 28) -> date:
+    year = current_end_date.year
+    month = current_end_date.month + 1
+
+    if month == 13:
+        month = 1
+        year += 1
+
+    return _safe_subscription_end_date(year, month, payment_day)
 
 
 def create_subscription_for_user(
@@ -240,14 +260,47 @@ def confirm_payment(user_id: int, today: date):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT payment_day
+                SELECT
+                    payment_day,
+                    subscription_end_date,
+                    last_payment_date,
+                    is_paid_current_period
                 FROM player_subscriptions
                 WHERE user_id = %s
             """, (user_id,))
+
             row = cur.fetchone()
 
-            payment_day = row[0] if row and row[0] else 28
-            new_end_date = _get_next_subscription_end_date(today, payment_day)
+            if not row:
+                raise ValueError(f"Subscription not found for user_id={user_id}")
+
+            payment_day = row[0] if row[0] else DEFAULT_PAYMENT_DAY
+            subscription_end_date = row[1]
+            last_payment_date = row[2]
+            is_paid_current_period = row[3]
+
+            if not subscription_end_date:
+                new_end_date = _get_current_subscription_end_date(today, payment_day)
+
+            elif is_paid_current_period and subscription_end_date > today + timedelta(days=SUBSCRIPTION_END_REMINDER_DAYS):
+                # Игрок уже оплачен, а новый платёжный период ещё не открыт.
+                # Ничего не продлеваем, чтобы ранний клик "Оплатил" не переносил абонемент на следующий месяц.
+                new_end_date = subscription_end_date
+
+            elif last_payment_date is None and subscription_end_date >= today:
+                # Первая оплата после одобрения игрока.
+                # Оплата закрывает текущий месяц, а не следующий.
+                new_end_date = subscription_end_date
+
+            elif subscription_end_date >= today:
+                # Новый платёжный период уже открыт за 5 дней до окончания.
+                # Это оплата продления на следующий месяц.
+                new_end_date = _get_next_subscription_end_date(subscription_end_date, payment_day)
+
+            else:
+                # Абонемент уже просрочен.
+                # Оплата закрывает актуальный платёжный месяц.
+                new_end_date = _get_current_subscription_end_date(today, payment_day)
 
             cur.execute("""
                 UPDATE player_subscriptions
@@ -257,6 +310,7 @@ def confirm_payment(user_id: int, today: date):
                     payment_claimed = FALSE
                 WHERE user_id = %s
             """, (today, new_end_date, user_id))
+
         conn.commit()
 
     return new_end_date
