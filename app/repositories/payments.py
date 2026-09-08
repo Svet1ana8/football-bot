@@ -158,6 +158,38 @@ def get_all_subscriptions():
             """)
             return cur.fetchall()
 
+def get_all_subscriptions_with_users():
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    ps.user_id,
+                    u.username,
+                    u.first_name,
+                    u.status,
+                    ps.payment_day,
+                    ps.subscription_type,
+                    ps.subscription_end_date,
+                    ps.last_payment_date,
+                    ps.is_paid_current_period,
+                    ps.has_custom_schedule,
+                    ps.payment_claimed
+                FROM player_subscriptions ps
+                LEFT JOIN users u
+                    ON u.user_id = ps.user_id
+                ORDER BY
+                    CASE
+                        WHEN u.status = 'approved' THEN 1
+                        WHEN u.status = 'removed_payment' THEN 2
+                        WHEN u.status = 'rejected' THEN 3
+                        WHEN u.status IS NULL THEN 4
+                        ELSE 5
+                    END,
+                    u.first_name NULLS LAST,
+                    ps.user_id
+            """)
+            return cur.fetchall()
+
 
 def update_subscription_dates(
     user_id: int,
@@ -461,28 +493,7 @@ def add_payment_history(
             """, (user_id, action, comment, payment_period))
         conn.commit()
 
-def get_confirmed_payment_history_for_month(year: int, month: int):
-    payment_period = date(year, month, 1)
 
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    ph.id,
-                    ph.user_id,
-                    u.username,
-                    u.first_name,
-                    ph.created_at,
-                    ph.comment
-                FROM payment_history ph
-                LEFT JOIN users u
-                    ON u.user_id = ph.user_id
-                WHERE ph.action = 'confirmed'
-                  AND ph.payment_period = %s
-                ORDER BY u.first_name NULLS LAST, ph.created_at DESC
-            """, (payment_period,))
-
-            return cur.fetchall()
 
 
 def get_payment_history_by_user(user_id: int):

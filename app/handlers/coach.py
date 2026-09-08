@@ -36,6 +36,7 @@ from app.repositories.payments import (
     get_unpaid_subscriptions_with_users,
     set_subscription_type,
     get_confirmed_payment_history_for_month,
+    get_all_subscriptions_with_users,
 )
 from app.repositories.training_schedule import (
     add_training_schedule,
@@ -61,6 +62,19 @@ from app.services.trainings import (
     schedule_training_repeat_job,
     start_training_reminder,
 )
+
+def format_user_status(status: str | None) -> str:
+    statuses = {
+        "approved": "активный",
+        "pending": "заявка на рассмотрении",
+        "awaiting_name": "ожидает имя",
+        "rejected": "отклонён тренером",
+        "removed_payment": "удалён за неоплату",
+        "removed_by_coach": "удалён тренером",
+        "removed": "удалён",
+    }
+
+    return statuses.get(status, status or "нет в таблице users")
 
 def get_month_name_nominative(month: int) -> str:
     months = {
@@ -1389,35 +1403,43 @@ async def show_all_subscriptions(update: Update, context: ContextTypes.DEFAULT_T
         await deny_access(update)
         return
 
-    subscriptions = get_all_subscriptions()
+    subscriptions = get_all_subscriptions_with_users()
 
     if not subscriptions:
         await update.message.reply_text("Абонементов пока нет.")
         return
 
-    players_map = {
-        user_id: (username, first_name)
-        for user_id, username, first_name in get_users_by_status("approved")
-    }
+    text = "🎫 Все абонементы:\n\n"
 
-    text = "Все абонементы:\n\n"
-
-    for user_id, payment_day, subscription_type, subscription_end_date, last_payment_date, is_paid_current_period, _has_custom_schedule, payment_claimed in subscriptions:
-        username, first_name = players_map.get(user_id, (None, None))
-
+    for (
+        user_id,
+        username,
+        first_name,
+        status,
+        payment_day,
+        subscription_type,
+        subscription_end_date,
+        last_payment_date,
+        is_paid_current_period,
+        _has_custom_schedule,
+        payment_claimed,
+    ) in subscriptions:
         name = first_name or str(user_id)
+
         if username:
             name += f" (@{username})"
 
-        end_date_text = subscription_end_date.strftime('%d.%m.%Y') if subscription_end_date else "Не указана"
-        last_payment_text = last_payment_date.strftime('%d.%m.%Y') if last_payment_date else "Не указана"
+        status_text = format_user_status(status)
+        subscription_type_text = "месячный" if subscription_type == "monthly" else "игровой"
+        end_date_text = subscription_end_date.strftime("%d.%m.%Y") if subscription_end_date else "не указана"
+        last_payment_text = last_payment_date.strftime("%d.%m.%Y") if last_payment_date else "не указана"
         paid_text = "Да" if is_paid_current_period else "Нет"
         claimed_text = "Да" if payment_claimed else "Нет"
-        subscription_type_text = "месячный" if subscription_type == "monthly" else "игровой"
 
         text += (
             f"👤 Игрок: {name}\n"
             f"🆔 ID: {user_id}\n"
+            f"👥 Статус: {status_text}\n"
             f"🎫 Абонемент: {subscription_type_text}\n"
             f"💳 Абонемент до: {end_date_text}\n"
             f"📅 Плановая дата оплаты: {payment_day}\n"
