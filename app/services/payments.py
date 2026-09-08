@@ -17,7 +17,7 @@ from app.repositories.payments import (
     get_unpaid_subscriptions_with_users,
     open_monthly_payment_periods,
 )
-from app.repositories.users import add_or_update_user, get_user_by_id
+from app.repositories.users import add_or_update_user, get_user_by_id, get_users_by_status
 from app.services.access import is_broadcast_recipient
 from app.utils.dates import get_month_name_prepositional
 from app.i18n import t
@@ -349,39 +349,26 @@ async def send_manual_payment_reminders(context: ContextTypes.DEFAULT_TYPE):
     """
     Ручная кнопка тренера "Напомнить об оплате".
 
-    Использует ту же выборку, что и автоматическое напоминание в день оплаты:
-    - только approved игроки;
-    - только payment_day = сегодняшний день;
-    - только is_paid_current_period = FALSE.
-    """
-    today = datetime.now(TIMEZONE).date()
-    ensure_monthly_payment_periods_open(today)
-    subscriptions = get_payment_due_today_with_users(today)
+    Отправляет напоминание всем активным игрокам команды:
+    - только users.status = 'approved';
+    - независимо от payment_day;
+    - независимо от is_paid_current_period.
 
-    if not subscriptions:
+    Автоматические напоминания за 5 дней и просрочка работают отдельно.
+    """
+    players = get_users_by_status("approved")
+
+    if not players:
         return 0, 0
 
     success_count = 0
     fail_count = 0
+    message_text = build_payment_reminder_message()
     reply_markup = get_payment_keyboard()
 
-    for (
-        user_id,
-        username,
-        first_name,
-        payment_day,
-        subscription_type,
-        subscription_end_date,
-        last_payment_date,
-        is_paid_current_period,
-        _has_custom_schedule,
-        payment_claimed,
-    ) in subscriptions:
+    for user_id, username, first_name in players:
         if not is_broadcast_recipient(user_id):
             continue
-
-        language_code = get_user_language(user_id)
-        message_text = build_payment_reminder_message(language_code)
 
         try:
             await context.bot.send_message(
