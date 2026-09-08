@@ -646,6 +646,21 @@ def build_training_message() -> str:
         "Контрольный вопрос: ты придёшь на тренировку?"
     )
 
+def build_manual_training_reminder_message(training: dict, now: datetime) -> str:
+    training_start = training.get("start_time")
+
+    if training_start:
+        training_start_local = training_start.astimezone(TIMEZONE)
+        training_date = training_start_local.date()
+
+        if training_date == now.date():
+            return build_today_training_message()
+
+        if training_date == now.date() + timedelta(days=1):
+            return build_training_message()
+
+    return training.get("message_text") or build_training_message()
+
 
 def build_today_training_message() -> str:
     return (
@@ -1563,7 +1578,7 @@ async def send_manual_training_reminder(
         return None
 
     training_id = training["id"]
-    message_text = training["message_text"]
+    message_text = build_manual_training_reminder_message(training, now)
     keyboard = get_training_keyboard(training_id)
 
     approved_users = get_users_by_status("approved")
